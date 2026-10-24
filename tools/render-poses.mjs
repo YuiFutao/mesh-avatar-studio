@@ -29,6 +29,10 @@ async function main() {
   const rig = JSON.parse(await readFile(resolve(project, 'rig.json'), 'utf8'));
   const errors = validateRig(rig);
   if (errors.length) throw new Error(errors.join('\n'));
+  if (rig.eyeFrames) {
+    const half = (rig.eyeFrames.closedMax + rig.eyeFrames.openMin) / 2;
+    poses.find(([name]) => name === 'eyes-half')[1] = { eyeLOpen: half, eyeROpen: half };
+  }
   const built = await realpath(resolve(project, 'built'));
   if (relative(project, built).startsWith('..')) throw new Error('built folder must stay inside the project');
   const assets = {};

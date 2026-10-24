@@ -37,8 +37,11 @@ export interface MeshAvatar {
   setAutoIdle(on: boolean): void;
   setAutoMotion(on: boolean): void;
   setSwayGain(gain: number): void;
+  /** Preview one configured twitch without changing its normal interval. */
+  triggerAccessoryTwitch(): void;
   onMotion(listener: (id: string | null) => void): () => void;
-  advance(seconds: number, fps?: number): void;
+  /** elapsedSeconds optionally supplies real time for accessory gestures when physics time is clamped. */
+  advance(seconds: number, fps?: number, elapsedSeconds?: number): void;
   advanceParameters(seconds: number): void;
   destroy(): void;
 }

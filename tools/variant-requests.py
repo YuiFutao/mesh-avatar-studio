@@ -20,6 +20,8 @@ from agent_common import (
 )
 
 CHANGES = {
+    "mouth_smile": "Draw a gently smiling closed mouth, with the corners raised. Keep the mouth closed and in its original location.",
+    "eyes_smile_open": "Draw smiling open eyes, with visible irises and eye white. Keep the eyebrows unchanged. This is separate from the closed smiling eyes.",
     "eyes_closed": "Close both eyes naturally, using one clean upper lash line per eye. Remove all visible iris and eye white. Keep the eyebrows unchanged.",
     "eyes_half": "Draw both eyes half closed, with the upper lids halfway down. Keep the iris visible only below the upper lid and preserve the original gaze.",
     "eyes_smile": "Draw both eyes closed in a gentle smiling upward arc, with clean lashes and no visible iris or eye white. Keep the eyebrows unchanged.",

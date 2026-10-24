@@ -126,7 +126,7 @@ class AgentToolsTest(unittest.TestCase):
         result = self.cli("variant-requests", self.project)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(
-            len(list((self.project / "variant-requests").glob("*/mask.png"))), 11
+            len(list((self.project / "variant-requests").glob("*/mask.png"))), 13
         )
         self.assertEqual(
             (self.project / "variant-requests/mouth_angry/mask.png").read_bytes(),

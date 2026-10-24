@@ -111,11 +111,11 @@ def grid_image(image, region=None, step=50):
 EYE_VARIANTS = ("eyes_closed", "eyes_half", "eyes_smile")
 # Open eyes drawn for an expression; the brows stay outside the mask (the runtime moves them).
 # The angry face keeps the half-closed eyes and only gets a drawn mouth.
-EXPRESSION_EYE_VARIANTS = ("eyes_sad", "eyes_surprise")
+EXPRESSION_EYE_VARIANTS = ("eyes_sad", "eyes_surprise", "eyes_smile_open")
 ALL_EYE_VARIANTS = (*EYE_VARIANTS, *EXPRESSION_EYE_VARIANTS)
 MOUTH_VARIANTS = ("mouth_a", "mouth_a_half", "mouth_i", "mouth_o")
 # Closed mouths drawn for an expression, shown while the avatar is not speaking.
-EXPRESSION_MOUTH_VARIANTS = ("mouth_angry", "mouth_sad")
+EXPRESSION_MOUTH_VARIANTS = ("mouth_angry", "mouth_sad", "mouth_smile")
 ALL_MOUTH_VARIANTS = (*MOUTH_VARIANTS, *EXPRESSION_MOUTH_VARIANTS)
 
 

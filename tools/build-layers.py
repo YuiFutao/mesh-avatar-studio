@@ -30,6 +30,15 @@ def polygon_mask(shape, poly):
 
 
 def accessory_mask(rgba, accessory):
+    if "outline" in accessory:
+        mask = polygon_mask(rgba.shape[:2], accessory["outline"])
+        if accessory.get("keepLargest", False):
+            core = ((mask > 0) & (rgba[..., 3] > 16)).astype(np.uint8)
+            n, labels, stats, _ = cv2.connectedComponentsWithStats(core)
+            if n > 1:
+                big = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])
+                mask &= cv2.dilate((labels == big).astype(np.uint8) * 255, np.ones((3, 3), np.uint8))
+        return mask
     rgb = rgba[..., :3]
     box = accessory["box"]
     x0, y0, x1, y1 = box
@@ -478,6 +487,18 @@ def validate_inputs(rig, rgba):
                 f"accessories[{i}].name must be a unique, safe layer filename"
             )
         names.add(name)
+        if "rootCover" in accessory:
+            cover_name = name + "_root_cover"
+            if cover_name in names or any(a["name"] == cover_name for a in rig.get("accessories", [])):
+                raise ValueError(f"accessories[{i}].rootCover: conflicting layer name")
+            names.add(cover_name)
+        for key in ("outline", "rootCover"):
+            if key in accessory:
+                points = np.asarray(accessory[key], dtype=np.float64)
+                if points.ndim != 2 or points.shape[1] != 2 or len(points) < 3 or not np.isfinite(points).all():
+                    raise ValueError(f"accessories[{i}].{key}: expected a finite polygon")
+                if np.any(points < 0) or np.any(points[:, 0] > w) or np.any(points[:, 1] > h):
+                    raise ValueError(f"accessories[{i}].{key}: polygon must stay inside image")
         box = accessory["box"]
         if len(box) != 4 or any(
             not isinstance(n, (int, float)) or not math.isfinite(n) for n in box
@@ -538,6 +559,9 @@ def build(project, rig_path):
                 f"accessory {accessory['name']}: no pixels match its box and color thresholds"
             )
         store(accessory["name"], *crop_layer(rgba, mask))
+        if "rootCover" in accessory:
+            cover = polygon_mask((h, w), accessory["rootCover"])
+            store(accessory["name"] + "_root_cover", *crop_layer(rgba, cover))
         accessory_bg |= cv2.dilate(mask, np.ones((5, 5), np.uint8))
 
     eye_hole = np.zeros((h, w), np.uint8)

@@ -10,7 +10,7 @@ radii and mesh cell sizes must be positive. Mesh cell sizes and fine-mesh rectan
 coordinates must be integers. Accessory boxes must be integer rectangles inside the image. A band is `[start, end]` with `start < end`.
 Ellipses are smooth influence regions, not hard cut-out boundaries.
 
-Only `buns`, `strands`, `accessories`, `hand` and `view.gazeCenter` are optional. Omit absent
+The groups `buns`, `strands`, `accessories`, `hand`, plus `view.gazeCenter` and `head.rollRegions`, are optional. Omit absent
 optional groups. Required regions must still be placed even if their animation will be small.
 The initial draft has empty eye polygons and is intentionally invalid until they are traced.
 See [agent-guide.md](agent-guide.md) for the process and [rig-mapping.md](rig-mapping.md) for
@@ -32,6 +32,10 @@ the engine mapping. Do not copy the example illustration's coordinates into a ne
 | `head.maxRoll` | Roll magnitude at a ±30° head pose, radians; start near `0.15`. |
 | `head.weightBand` | Y range, px, where head influence fades from full to zero; below chin to collarbone. |
 | `head.turnBand` | Y range, px, where face-turn displacement fades; below chin into upper chest. |
+| `head.rigidRegions` | Optional coherent patches for pointed ears/horns. Each has an `outline` polygon, positive outward `feather` (px), and source-pixel `anchor` at its scalp attachment. Inside, the patch retains its shape and follows the anchor's head/body translation and roll; the surrounding feather blends into the normal deformation. Regions are disjoint; where feathers overlap the strongest wins. This prevents root-to-tip turn gradients from bending an ear. Omit for the original deformation. |
+| `head.rigidRegions[*].sway` | Optional damped rotation around the attachment. `tip` is a source-pixel point distinct from `anchor`, defining the ear's direction and length. `frequency` is positive Hz, `damping` a positive damping ratio, `maxAngle` a positive relative-angle cap in radians, and `lag` / `inertia` are 0–1 rotation-lag and attachment-acceleration gains. Ears respond to movement and settle without idle wind; their shape and anchor remain intact. `setSwayGain(0)` disables the extra motion. A paused redraw or a step gap over 250ms resets this spring without a kick. Omit for rigid attachment only; older runtimes ignore it. |
+| `head.rollRegions` | Optional extra head-rotation regions for long hair below the neck fade. Each entry has an `outline` polygon of source-pixel points and a positive `feather` distance in px. Rotation follows the head fully inside the polygon and fades outside it. Enclose the whole lock, placing the feather in transparent space and away from clothing. Face-turn displacement still uses `turnBand`. Omit for the original behavior; older runtimes ignore this field. |
+| `head.rollRegions[*].swing` | Optional coherent pendulum motion for a long lock. `pivot` is the source-pixel attachment point; `length` is a positive effective hanging length in px. `band: [y0,y1]` blends from a fixed root above y0 to full swing below y1. `gravity` (0–1) controls how much head tilt the hanging lock counters; `frequency` (positive Hz) and `damping` (positive damping ratio) control its delayed response and settling. `maxAngle` (positive radians) caps the angular offset before the sway-gain multiplier. Local root acceleration also drives the pendulum. Keep the band and feather out of overlapping scalp/clothing ink. Inside the swing region, the existing small strand displacements fade out to preserve the whole contour. Without `swing`, rotation regions retain their original behavior. |
 | `body.pivotX` | Body roll pivot x, px; middle of the lower torso. |
 | `body.pivotY` | Body roll pivot y, px; near the bottom of the image. |
 | `body.maxRoll` | Body rotation at a ±10° body pose, radians; start near `0.035`. |
@@ -88,6 +92,8 @@ the engine mapping. Do not copy the example illustration's coordinates into a ne
 | `buns.bunR.rx` | Horizontal influence radius, px; Optional image-right bun ellipse, px; include whole bun, exclude ribbons. |
 | `buns.bunR.ry` | Vertical influence radius, px; Optional image-right bun ellipse, px; include whole bun, exclude ribbons. |
 | `eyes` | Exactly two entries: index `0` is image-left, index `1` image-right (not anatomical left/right). |
+| `eyeFrames` | Optional drawn-eye selection thresholds `{closedMax, openMin}`, both 0–1 with `closedMax < openMin`. Half-open artwork is selected in `[closedMax, openMin)`; below it the eye is closed, above it open. Defaults to 0.3/0.75. Set optional `smileOpenSprite: false` to retain the source open eyes instead of `eyes_smile_open` while smiling. Blinks and half-open eyes still follow openness. Does not change tracking calibration or the 60ms sprite fade. |
+| `eyeFrames.widening` | Optional `{upper, lower}` positive distances in source pixels, e.g. `{upper:24, lower:6}` on a 2048px illustration. Enables `eyeLWide` / `eyeRWide` (0–1, default 0), which lift the upper eye contour and lower the bottom contour independently. Uses existing sampled eye openings, pins corners and fades into surrounding skin; base and covering sprites share the same deformation. No new artwork or sprite names are required. Closing an eye suppresses its widening; half/closed eyes keep their existing artwork. Omit this data to retain previous rendering even if wide parameters are supplied. This stretches the original drawn eye; it does not invent hidden sclera or repaint the iris. |
 | `eyes[*].opening` | Polygon `[x,y]` points, px; trace eye white + iris inside lashes, 14–20 points from outer corner. |
 | `eyes[*].roi` | Polygon `[x,y]` points, px; surround full lashes and lower lid by about 10–20 px, avoid hair. |
 | `eyes[*].x0` | Generated leftmost opening x, px; omit in draft, builder computes it. |
@@ -104,6 +110,7 @@ the engine mapping. Do not copy the example illustration's coordinates into a ne
 | `mouth.area.rx` | Mouth edit region horizontal radius, px; slightly beyond corners. |
 | `mouth.area.ry` | Mouth edit region vertical radius, px; allow drawn open mouths without reaching chin. |
 | `mouth.area.angle` | Mouth edit ellipse rotation, radians; follow mouth line. |
+| `mouth.stability` | Optional drawn-mouth stability and missing-vowel fallback. Supply `closeThreshold < openThreshold < smallThreshold < largeThreshold` (each 0–1), plus `minOpenSeconds` (0–1 seconds). Opening uses `openThreshold`, closing uses `closeThreshold` after the minimum open duration. Large あ enters at `largeThreshold`, returns to small あ below `smallThreshold`. Optional `minSmallSeconds` / `minLargeSeconds` (0–1 seconds, default 0) retain each size before a downward transition; growing is immediate. The large hold preserves its peak visible height and also delays closing, independently of the initial open hold. Missing vowel drawings use the nearest available あ drawing, then い/お. Omit for the original sprite selection and deformation. A paused pose preview (`dt=0`) shows the selected pose immediately. |
 | `cheeks` | Exactly two `[x,y]` blush centres, px; image-left then image-right cheek. |
 | `strands[*].name` | Nonempty label for the hair lock; use distinct readable names. |
 | `strands[*].nodes` | Root-to-tip polyline of `[x,y]` points, px; start with four nodes entirely on hair. |
@@ -111,12 +118,22 @@ the engine mapping. Do not copy the example illustration's coordinates into a ne
 | `strands[*].k` | Positive spring response multiplier, unitless; start near `1`. |
 | `strands[*].max` | Maximum hair displacement, px; start around 7–12. |
 | `accessories[*].name` | Unique safe layer filename stem (letters/digits/underscore/hyphen), not a reserved layer name. |
-| `accessories[*].pivot` | Hanging accessory root `[x,y]`, px; fixed attachment point. |
-| `accessories[*].tip` | Hanging accessory endpoint `[x,y]`, px; bottom of pendant/tassel. |
+| `accessories[*].pivot` | Accessory root `[x,y]`, px; fixed attachment point. |
+| `accessories[*].tip` | Accessory endpoint `[x,y]`, px; bottom for hanging parts, top for upright parts. |
 | `accessories[*].split` | Split position along two-bone accessory, fraction strictly between 0 and 1; start near `0.4`. |
 | `accessories[*].box` | Integer `[x0,y0,x1,y1]` search rectangle, px; tightly bound accessory, x1/y1 exclusive. |
-| `accessories[*].color.redness` | Minimum `(R-max(G,B))/max(R,1)` ratio, 0–1; builder currently isolates red accessories only. |
+| `accessories[*].color.redness` | Minimum `(R-max(G,B))/max(R,1)` ratio, 0–1; used when `outline` is absent. Still required for older builders. |
 | `accessories[*].color.minRed` | Minimum red channel, 0–255; suppress dark background inside box. |
+| `accessories[*].outline` | Optional polygon `[x,y]` points, px; cuts out the full accessory regardless of color. Points must be inside the image. |
+| `accessories[*].keepLargest` | Optional boolean; with `outline`, retains the largest connected visible component and its antialiased edge. Useful for excluding detached neighboring ornaments. |
+| `accessories[*].rootCover` | Optional polygon of original foreground pixels, px; exports `<name>_root_cover.png`, drawn above accessories and following the head/body. Use hair below the cut to hide the attachment seam. Reconstruct the hidden base separately; a cutout alone cannot recover occluded pixels. |
+| `accessories[*].pendulum.mode` | Optional `"upright"`; two spring joints return toward the attachment's head/body angle, suitable for ears growing upward. Omit the entire `pendulum` for the existing hanging behavior. |
+| `accessories[*].pendulum.frequency` | Positive spring frequency, Hz. Start near `1.5`. |
+| `accessories[*].pendulum.damping` | Positive damping ratio; about `0.55` permits a small settling swing. |
+| `accessories[*].pendulum.inertia` | Attachment acceleration response, 0–1. Start near `0.4`. |
+| `accessories[*].pendulum.maxAngle` | Positive maximum root angle relative to the attachment, radians. Start near `0.085` (4.9 degrees). |
+| `accessories[*].pendulum.maxBend` | Positive maximum second-joint bend relative to the first, radians. Start near `0.045` (2.6 degrees). |
+| `accessories[*].twitch` | Optional `{ interval: [min,max], angle }` for upright accessories. Interval is an increasing range in seconds with min > 0.53; signed angle is nonzero radians, bounded by `pendulum.maxAngle`. All enabled accessories share one clock: one randomly chosen accessory makes two smooth pulses over 0.53 seconds, then returns exactly to its existing sway. The next start is randomly spaced within the selected accessory's interval (e.g. `[10,20]`). The rotation respects sway gain and the existing angle/bend limits; paused or long physics steps cancel the active gesture without accumulating missed events. Omit for unchanged legacy physics. Older runtimes ignore this field. |
 | `hand.outline` | Polygon `[x,y]` points, px; trace the entire visible hand/forearm to cut out. |
 | `hand.jaw` | Visible jaw polyline `[x,y]`, px; sample both sides of the hand occlusion for interpolation. |
 | `hand.jawRange` | Increasing x range, px; jaw segment to reconstruct behind hand. |
@@ -150,3 +167,5 @@ the engine mapping. Do not copy the example illustration's coordinates into a ne
 Draft validation accepts omitted `x0/x1/top/bot` only as a complete group; supplying some of
 the four fields is an error. Complete rigs always require all four. Changing eye geometry
 requires rebuilding; old sampled curves cannot reconstruct new image pixels.
+
+`MeshAvatar.triggerAccessoryTwitch()` previews one configured gesture immediately and then resumes the normal shared interval; without twitch data it is a no-op. Manual callers that clamp simulation time can pass actual elapsed seconds as the optional third argument of `advance(seconds, fps, elapsedSeconds)`. Existing two-argument calls retain their behavior.

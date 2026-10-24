@@ -82,7 +82,7 @@ export async function createMeshAvatarImpl(canvas, options) {
   };
   const meta = await loadJson(asset('layers.json'));
 
-  const names = ['base', ...(rig.hand ? ['hand'] : []), ...TASSELS.map(t => t.name), ...[0, 1].flatMap(i => EYE_PARTS.map(p => `eye${i}_${p}`)), 'hairmask'];
+  const names = ['base', ...(rig.hand ? ['hand'] : []), ...TASSELS.flatMap(t => [t.name, ...(t.rootCover ? [`${t.name}_root_cover`] : [])]), ...[0, 1].flatMap(i => EYE_PARTS.map(p => `eye${i}_${p}`)), 'hairmask'];
   const imgs = Object.fromEntries(await Promise.all(names.map(async n => [n, await loadImage(asset(`${n}.png`, meta.build))])));
   const hairMask = channelOf(imgs.hairmask, 0);
   const hairAt = (x, y) => hairMask[Math.min(IMG.h - 1, Math.max(0, Math.round(y))) * IMG.w + Math.min(IMG.w - 1, Math.max(0, Math.round(x)))] / 255;
@@ -132,6 +132,14 @@ export async function createMeshAvatarImpl(canvas, options) {
     const mesh = buildGrid(rects[t.name], rig.mesh.tasselCell, alphaOf(imgs[t.name]), imgs[t.name].width);
     return R.addLayer(t.name, imgs[t.name], mesh);
   });
+  const rootCovers = TASSELS.filter(t => t.rootCover).map(t => {
+    const name = `${t.name}_root_cover`;
+    const mesh = buildGrid(rects[name], rig.mesh.tasselCell, alphaOf(imgs[name]), imgs[name].width);
+    const weights = [];
+    for (let k = 0; k < mesh.rest.length / 2; k++) weights.push(baseWeights(mesh.rest[k * 2], mesh.rest[k * 2 + 1], 0));
+    R.addLayer(name, imgs[name], mesh);
+    return { mesh, weights };
+  });
 
   const handMesh = rig.hand ? buildGrid(rects.hand, rig.mesh.handCell, alphaOf(imgs.hand), imgs.hand.width) : { rest: [], pos: [] };
   const handW = [];
@@ -159,9 +167,9 @@ export async function createMeshAvatarImpl(canvas, options) {
     lastParameters = out;
     return out;
   }
-  function tick(dt) {
+  function tick(dt, elapsed = dt) {
     const P = updateParameters(dt);
-    const phys = physics.step(P, dt);
+    const phys = physics.step(P, dt, elapsed);
 
     const bp = baseMesh.pos, br = baseMesh.rest;
     for (let i = 0; i < baseW.length; i++) {
@@ -191,6 +199,12 @@ export async function createMeshAvatarImpl(canvas, options) {
       hp[i * 2] = tmp[0]; hp[i * 2 + 1] = tmp[1];
     }
     physics.chains.forEach((ch, k) => deformTassel(ch, tassels[k].mesh));
+    for (const cover of rootCovers) {
+      for (let k = 0; k < cover.weights.length; k++) {
+        deformBase(cover.mesh.rest[k * 2], cover.mesh.rest[k * 2 + 1], cover.weights[k], P, phys, tmp);
+        cover.mesh.pos[k * 2] = tmp[0]; cover.mesh.pos[k * 2 + 1] = tmp[1];
+      }
+    }
 
     const ball = 7; // px of iris travel
     R.draw({
@@ -209,9 +223,10 @@ export async function createMeshAvatarImpl(canvas, options) {
   // (offline video rendering, one call per frame)
   let raf = 0, last = performance.now(), destroyed = false;
   const frame = now => {
-    const dt = Math.min(0.05, (now - last) / 1000);
+    const elapsed = (now - last) / 1000;
+    const dt = Math.min(0.05, elapsed);
     last = now;
-    tick(dt);
+    tick(dt, elapsed);
     raf = requestAnimationFrame(frame);
   };
   if (!options.manual) raf = requestAnimationFrame(frame);
@@ -249,13 +264,18 @@ export async function createMeshAvatarImpl(canvas, options) {
     setAutoMotion(on) { motion.autoMotion = !!on; },
     /** Hair / tassel sway multiplier (1 = default). */
     setSwayGain(g) { physics.gain = g; },
+    /** Preview one configured accessory gesture; the normal interval resumes afterward. */
+    triggerAccessoryTwitch() { if (!destroyed) physics.triggerTwitch(); },
     /** Called with the motion id when a motion starts and with null when it ends. */
     onMotion(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     /** Advance the simulation by `sec` and draw (for tests / hidden tabs). */
-    advance(sec, fps = 60) {
+    advance(sec, fps = 60, elapsed) {
       if (destroyed) return;
-      if (sec === 0) tick(0);
-      else for (let i = 0; i < Math.round(sec * fps); i++) tick(1 / fps);
+      if (sec === 0) tick(0, elapsed ?? 0);
+      else {
+        const frames = Math.round(sec * fps);
+        for (let i = 0; i < frames; i++) tick(1 / fps, elapsed === undefined ? 1 / fps : elapsed / frames);
+      }
     },
     /** Update motion and lip sync without drawing a hidden preview. */
     advanceParameters(sec) { if (!destroyed) updateParameters(sec); },

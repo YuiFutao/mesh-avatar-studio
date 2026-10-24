@@ -1,4 +1,7 @@
 export const liveEn = {
+  faceCalibration: 'Face and smile calibration', useFaceCalibration: 'Use calibrated face tracking', importFaceCalibration: 'Load calibration JSON', clearFaceCalibration: 'Remove calibration',
+  faceCalibrationHint: 'Saved for this avatar in this browser. Smile and half-eye artwork must be included in the avatar to show those drawings.',
+  faceCalibrationError: 'Could not load calibration. Check the JSON settings file.', faceSmile: 'Smile', faceLeftEye: 'Left eye openness', faceRightEye: 'Right eye openness',
   title: 'Live', back: 'Back to editor', camera: 'Camera', device: 'Device', defaultDevice: 'Default device',
   start: 'Start camera', stop: 'Stop camera', calibrate: 'Calibrate', calibrated: 'Neutral pose saved',
   calibrateHint: 'Look straight at the camera with relaxed eyes and a closed mouth, then calibrate.',
@@ -31,6 +34,9 @@ export const liveEn = {
   presetHint: 'Save stores the current lighting in that slot. While this page is focused, Shift+1–8 apply presets. Other apps can send {"preset": 1} to the URL below with the same token as expressions.',
 };
 const liveJa: typeof liveEn = {
+  faceCalibration: '顔・笑顔の補正', useFaceCalibration: '校正した顔追従を使う', importFaceCalibration: '補正JSONを読み込む', clearFaceCalibration: '補正設定を削除',
+  faceCalibrationHint: 'このブラウザの、このアバター用に保存します。笑顔や半目の絵を表示するには、アバター側の対応素材が必要です。',
+  faceCalibrationError: '補正設定を読み込めませんでした。JSON設定ファイルを確認してください。', faceSmile: '笑顔', faceLeftEye: '左目の開き', faceRightEye: '右目の開き',
   title: '配信', back: 'エディタに戻る', camera: 'カメラ', device: 'デバイス', defaultDevice: '既定のデバイス',
   start: 'カメラを開始', stop: 'カメラを停止', calibrate: '正面の姿勢を登録', calibrated: '正面の姿勢を登録しました',
   calibrateHint: '目と口の力を抜き、口を閉じてカメラに正面を向いた状態で登録してください。',
@@ -63,6 +69,9 @@ const liveJa: typeof liveEn = {
   presetHint: '「保存」で今のライティングをその枠に保存します。この画面を操作している間は、Shift+1〜8でプリセットを呼び出せます。他のアプリからは、表情と同じトークンを付けて下のURLに {"preset": 1} を送ります。',
 };
 const liveZh: typeof liveEn = {
+  faceCalibration: '面部与微笑校准', useFaceCalibration: '使用已校准的面部追踪', importFaceCalibration: '加载校准 JSON', clearFaceCalibration: '删除校准设置',
+  faceCalibrationHint: '保存在此浏览器中，仅用于此头像。显示微笑和半闭眼需要头像提供对应图像。',
+  faceCalibrationError: '无法加载校准。请检查 JSON 设置文件。', faceSmile: '微笑', faceLeftEye: '左眼开度', faceRightEye: '右眼开度',
   title: '直播', back: '返回编辑器', camera: '摄像头', device: '设备', defaultDevice: '默认设备',
   start: '启动摄像头', stop: '停止摄像头', calibrate: '校准', calibrated: '已保存中立姿态',
   calibrateHint: '正视摄像头，放松眼睛并闭上嘴，然后校准。',

@@ -24,10 +24,11 @@ export async function createAvatarView(canvas: HTMLCanvasElement, settings: View
   const timing: FrameTiming = { frames: 0, totalMs: 0, maxMs: 0 };
   let raf = 0, previous = performance.now(), lastPaint = previous;
   const update = (now: number, draw = true) => {
-    const dt = Math.min(0.05, Math.max(0.001, (now - previous) / 1000)); previous = now;
+    const frameElapsed = Math.max(0, (now - previous) / 1000);
+    const dt = Math.min(0.05, Math.max(0.001, frameElapsed)); previous = now;
     beforeFrame?.(avatar, now, dt);
     const start = performance.now();
-    if (draw) avatar.advance(dt, 1 / dt); else avatar.advanceParameters(dt);
+    if (draw) avatar.advance(dt, 1 / dt, frameElapsed); else avatar.advanceParameters(dt);
     const elapsed = performance.now() - start;
     if (draw) { timing.frames++; timing.totalMs += elapsed; timing.maxMs = Math.max(timing.maxMs, elapsed); }
     afterFrame?.(avatar, now);

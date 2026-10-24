@@ -2,6 +2,12 @@
 
 [日本語](README.ja.md)
 
+> **Personal model assets are not licensed for reuse.** This fork's custom avatar
+> (`yui-chibi03` and its variants), illustrations, textures, rig data and derived assets
+> must not be used, copied, modified, republished or redistributed without prior explicit
+> permission from the relevant rights holders. The code's MIT license does not grant
+> permission to use these personal model assets. See the [model asset notice](docs/MODEL_ASSET_NOTICE.md).
+
 Turn a single illustration into an animated 2D mesh avatar: it blinks, talks, turns its head,
 breathes and sways its hair. A coding agent prepares the avatar from your image; you fine-tune
 it in a local editor with a live preview.

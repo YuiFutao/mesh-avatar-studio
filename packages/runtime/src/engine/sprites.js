@@ -29,7 +29,7 @@ export function createSpriteModule(engine, rig) {
   const MOUTH_OPEN_MIN = 0.16;
   // Closed mouths drawn for an expression (mouth_angry / mouth_sad) replace the closed mouth of
   // the original image while it lasts; speaking still switches to the open mouth drawings.
-  const MOUTH_MOODS = ['angry', 'sad'];
+  const MOUTH_MOODS = ['angry', 'sad', 'smile'];
 
   // Vowel regions on the form axis, with a little hysteresis so the drawing does not flicker
   // when the form hovers on a boundary.
@@ -45,7 +45,7 @@ export function createSpriteModule(engine, rig) {
   // Eyes switch between drawings like anime frames: the original open eye (never with shifted
   // lids: lowering the cut-out lash left seams at the corners), the drawn half-closed eye,
   // and the drawn closed / smiling eye.
-  const EYE_OPEN_MIN = 0.75, EYE_CLOSED_MAX = 0.3, EYE_FADE_SEC = 0.06;
+  const EYE_OPEN_MIN = rig.eyeFrames?.openMin ?? 0.75, EYE_CLOSED_MAX = rig.eyeFrames?.closedMax ?? 0.3, EYE_FADE_SEC = 0.06;
 
   // Open eyes drawn for an expression (eyes_sad / eyes_surprise) replace the open and half-open
   // eye while it lasts; a blink still switches to the closed drawing. The angry face keeps the
@@ -88,9 +88,9 @@ export function createSpriteModule(engine, rig) {
     const items = {};
     // draw order matters for the cross-fades: half-closed and expression eyes under closed / smiling,
     // expression closed mouths under open ones (the fade-in frame is drawn on top)
-    const shut = n => n.startsWith('eyes_closed') || n.startsWith('eyes_smile');
+    const shut = n => n.startsWith('eyes_closed') || (n.startsWith('eyes_smile') && !n.startsWith('eyes_smile_open'));
     const moodMouth = n => MOUTH_MOODS.some(m => n === `mouth_${m}`);
-    const order = n => (shut(n) ? 1 : n.startsWith('eyes_') ? 0 : moodMouth(n) ? 2 : 3);
+    const order = n => (shut(n) ? 1 : n.startsWith('eyes_smile_open_') ? 0.5 : n.startsWith('eyes_') ? 0 : moodMouth(n) ? 2 : 3);
     const entries = Object.entries(sheet.layers).sort((x, y) => order(x[0]) - order(y[0]));
     for (const [name, rect] of entries) {
       const mesh = buildGrid(rect, rig.mesh.spriteCell, alphaOf(imgs[name]), imgs[name].width);
@@ -106,6 +106,9 @@ export function createSpriteModule(engine, rig) {
     }
     const tmp = [0, 0];
     let lastShape = null;
+    const stability = rig.mouth.stability;
+    let mouthActive = false, mouthAge = 0, largeMouth = false;
+    let sizeAge = 0, heldLargeOpen = 0;
     const eyeState = [0, 1].map(() => ({ cur: 'open', prev: 'open', t: 1 }));
 
     function place(item, P, phys, squash, width = 1) {
@@ -142,7 +145,8 @@ export function createSpriteModule(engine, rig) {
         // EYE_FADE_SEC (a time-based cross-fade, so no double image is ever held)
         eyes.forEach(([open, smile], i) => {
           const st = eyeState[i];
-          const drawn = EYE_MOODS_DRAWN.includes(mood) && items[`eyes_${mood}_${i}`] ? `eyes_${mood}` : null;
+          const drawn = EYE_MOODS_DRAWN.includes(mood) && items[`eyes_${mood}_${i}`] ? `eyes_${mood}`
+            : rig.eyeFrames?.smileOpenSprite !== false && !mood && open >= EYE_OPEN_MIN && smile >= 0.3 && items[`eyes_smile_open_${i}`] ? 'eyes_smile_open' : null;
           const want = eyeSprite(open, smile, drawn) ?? 'open';
           if (want !== st.cur) { st.prev = st.cur; st.cur = want; st.t = 0; }
           // A redraw without elapsed time (a paused preview moving a slider) shows the target
@@ -161,19 +165,56 @@ export function createSpriteModule(engine, rig) {
           // fading out to the open eye works the other way round
           // whichever frame is drawn higher up (closed/smile above half or expression eyes, all above the open eye)
           // does the fading, the lower one stays solid, so the eye is never see-through
-          const rank = n => (n === 'open' ? -1 : shut(n) ? 1 : 0);
+          const rank = n => (n === 'open' ? -1 : shut(n) ? 1 : n === 'eyes_smile_open' ? 0.5 : 0);
           if (st.t >= 1) show(st.cur, 1);
           else if (rank(st.cur) > rank(st.prev)) { show(st.prev, 1); show(st.cur, k); }
           else { show(st.cur, 1); show(st.prev, 1 - k); }
           covered[i] = st.cur !== 'open' && k >= 0.999;
         });
-        const shape = mouthShape(P.mouthOpen, P.mouthForm, lastShape);
+        let displayOpen = P.mouthOpen;
+        if (stability) {
+          // A paused slider is a direct pose preview. Running frames retain an open
+          // drawing briefly, with separate thresholds for opening and closing.
+          const minSizeSeconds = largeMouth ? stability.minLargeSeconds ?? 0 : stability.minSmallSeconds ?? 0;
+          if (mouthActive && dt > 0) sizeAge += dt;
+          const holdingSize = dt > 0 && mouthActive && sizeAge < minSizeSeconds;
+          if (dt <= 0) { mouthActive = displayOpen >= stability.openThreshold; mouthAge = stability.minOpenSeconds; }
+          else if (!mouthActive && displayOpen >= stability.openThreshold) { mouthActive = true; mouthAge = 0; sizeAge = 0; }
+          else if (mouthActive) {
+            mouthAge += dt;
+            if (displayOpen < stability.closeThreshold && mouthAge >= stability.minOpenSeconds && !holdingSize) mouthActive = false;
+          }
+          const wantLarge = mouthActive && displayOpen >= (largeMouth ? stability.smallThreshold : stability.largeThreshold);
+          if (wantLarge !== largeMouth && !(largeMouth && holdingSize)) {
+            largeMouth = wantLarge; sizeAge = 0;
+            if (largeMouth) heldLargeOpen = displayOpen;
+          }
+          // Keep both the drawing and its visible height for a short loud peak.
+          // Only downward transitions wait; opening and growing still react immediately.
+          if (dt > 0 && largeMouth && sizeAge < (stability.minLargeSeconds ?? 0)) {
+            heldLargeOpen = Math.max(heldLargeOpen, displayOpen);
+            displayOpen = Math.max(displayOpen, heldLargeOpen);
+          }
+          displayOpen = mouthActive ? Math.max(MOUTH_OPEN_MIN + 0.04, displayOpen) : 0;
+        }
+        const shape = mouthShape(displayOpen, P.mouthForm, lastShape);
         lastShape = shape;
-        const def = shape && MOUTH_SHAPES[shape];
+        let def = shape && MOUTH_SHAPES[shape];
+        if (stability && (shape === 'a' || shape === 'aHalf' || shape === 'e')) {
+          def = MOUTH_SHAPES[largeMouth ? 'a' : 'aHalf'];
+          if (shape === 'e') def = { ...def, width: MOUTH_SHAPES.e.width };
+        }
+        // Opt-in avatars can use the supplied a drawings for missing vowels.
+        // Legacy data retains its exact selection and deformation.
+        if (stability && def && !items[def.sprite]) {
+          const fallback = (largeMouth ? ['a', 'aHalf', 'i', 'o'] : ['aHalf', 'a', 'i', 'o']).find(s => items[MOUTH_SHAPES[s].sprite]);
+          def = fallback ? MOUTH_SHAPES[fallback] : null;
+        }
         const mt = def && items[def.sprite];
         // the expression's closed mouth stays solid under an open mouth drawing until it has faded in
-        const closed = MOUTH_MOODS.includes(mood) && items[`mouth_${mood}`];
-        if (closed && (!mt || P.mouthOpen < MOUTH_OPEN_MIN + 0.04)) {
+        const mouthMood = MOUTH_MOODS.includes(mood) ? mood : Math.min(P.eyeSmile, P.eyeSmileL ?? P.eyeSmile) >= 0.3 ? 'smile' : null;
+        const closed = mouthMood && items[`mouth_${mouthMood}`];
+        if (closed && (!mt || displayOpen < MOUTH_OPEN_MIN + 0.04)) {
           closed.layer.visible = true;
           closed.layer.alpha = 1;
           place(closed, P, phys, 1);
@@ -181,9 +222,9 @@ export function createSpriteModule(engine, rig) {
         if (mt) {
           mt.layer.visible = true;
           // fade in right above the threshold so the closed line hands over softly
-          mt.layer.alpha = sstep(MOUTH_OPEN_MIN, MOUTH_OPEN_MIN + 0.04, P.mouthOpen);
+          mt.layer.alpha = sstep(MOUTH_OPEN_MIN, MOUTH_OPEN_MIN + 0.04, displayOpen);
           // never squash a drawing below half its height: flatter looked like a blob
-          const squash = Math.min(1.1, Math.max(0.5, P.mouthOpen / def.ref));
+          const squash = Math.min(1.1, Math.max(0.5, displayOpen / def.ref));
           place(mt, P, phys, squash, def.width);
         }
         return { eyes: covered, mouth: shape };

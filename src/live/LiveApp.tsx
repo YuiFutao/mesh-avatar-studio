@@ -12,6 +12,7 @@ import { liveText } from './i18n';
 import { Icon } from '../editor/Icon';
 import { createLiveSender, receiveExpression, receiveLightingPreset, sendLighting, watchDuplicateLivePages } from './relay';
 import { EXPRESSION_TOKEN_PATH, LIGHTING_PRESET_PATH } from './expression-protocol';
+import { calibrationFromQuery, loadCalibration, parseCalibrationProfile, saveCalibration } from './calibration';
 
 export function LiveApp() {
   const { language, setLanguage } = useI18n(), t = liveText[language];
@@ -24,6 +25,10 @@ export function LiveApp() {
   const expressionRef = useRef(expression); expressionRef.current = expression;
   const [remote, setRemote] = useState<{ url: string; token: string } | null>(null), [remoteCopied, setRemoteCopied] = useState<'url' | 'token' | null>(null);
   const [options, setOptions] = useState<TrackingOptions>({ mirror: true, sensitivity: 1, smoothing: 0.35 });
+  const [correction, setCorrection] = useState(() => loadCalibration(settings.project, settings.avatar));
+  const [correctionError, setCorrectionError] = useState(false);
+  const [faceSignals, setFaceSignals] = useState<{ smile: number; left: number; right: number } | null>(null);
+  const profileInput = useRef<HTMLInputElement>(null), signalTime = useRef(-Infinity);
   const [cameraState, setCameraState] = useState<CameraState>('stopped');
   const [micState, setMicState] = useState<MicState>('micOff');
   const [tracking, setTracking] = useState(false), [showCamera, setShowCamera] = useState(true);
@@ -37,10 +42,32 @@ export function LiveApp() {
   const avatarRef = useRef<MeshAvatar | null>(null);
   const lightRef = useRef(settings.lighting); lightRef.current = settings.lighting;
   const pose = useRef(new FacePose());
-  const controls = useRef({ options, gain, micState, cameraState }); controls.current = { options, gain, micState, cameraState };
+  const controls = useRef({ options, gain, micState, cameraState, correctionEnabled: correction.enabled && !!correction.profile });
+  controls.current = { options, gain, micState, cameraState, correctionEnabled: correction.enabled && !!correction.profile };
+  useEffect(() => {
+    let cancelled = false;
+    const saved = loadCalibration(settings.project, settings.avatar);
+    setCorrection(saved); setCorrectionError(false);
+    if (new URLSearchParams(location.search).has('trackingProfile')) {
+      setCorrection({ ...saved, enabled: false });
+      void calibrationFromQuery(location.search, location.origin).then(profile => {
+        if (!cancelled && profile) {
+          const value = { profile, enabled: true }; setCorrection(value); saveCalibration(settings.project, settings.avatar, value);
+          // The explicit link installs once; later reloads keep the user's on/off choice.
+          const url = new URL(location.href); url.searchParams.delete('trackingProfile'); history.replaceState(history.state, '', url);
+        }
+      }).catch(() => { if (!cancelled) setCorrectionError(true); });
+    }
+    return () => { cancelled = true; };
+  }, [settings.project, settings.avatar]);
+  useEffect(() => {
+    pose.current.setCalibration(correction.enabled ? correction.profile?.config ?? null : null);
+    setFaceSignals(null);
+  }, [correction]);
+  const changeCorrection = (value: typeof correction) => { setCorrection(value); saveCalibration(settings.project, settings.avatar, value); };
   const refreshDevices = () => { void navigator.mediaDevices?.enumerateDevices().then(setDevices).catch(() => undefined); };
   useEffect(() => {
-    const capture = new CameraCapture(video.current!, (result, now) => pose.current.update(result, now), state => { setCameraState(state); if (state !== 'running') setTracking(false); });
+    const capture = new CameraCapture(video.current!, (result, now) => pose.current.update(result, now), state => { setCameraState(state); if (state !== 'running') { setTracking(false); pose.current.resetCalibration(); setFaceSignals(null); } });
     const mic = new MicrophoneCapture(setMicState);
     camera.current = capture; microphone.current = mic;
     refreshDevices(); navigator.mediaDevices?.addEventListener('devicechange', refreshDevices);
@@ -61,6 +88,10 @@ export function LiveApp() {
     void createAvatarView(canvas.current!, settings, (avatar, now, dt) => {
       const control = controls.current, sampled = pose.current.sample(now, dt, control.options);
       setTracking(sampled.tracking);
+      if (control.correctionEnabled && now - signalTime.current > 100) {
+        signalTime.current = now;
+        setFaceSignals(control.cameraState === 'running' && sampled.tracking ? { smile: sampled.params.eyeSmile, left: sampled.params.eyeLOpen, right: sampled.params.eyeROpen } : null);
+      }
       avatar.setAutoIdle(!sampled.tracking); avatar.setAutoMotion(!sampled.tracking);
       avatar.setParameters(sampled.params, sampled.weight);
       const micOn = control.micState === 'micOn';
@@ -147,6 +178,28 @@ export function LiveApp() {
         <label>{t.smoothing}<input type="range" min="0" max="1" step="0.05" value={options.smoothing} onChange={event => setOptions(current => ({ ...current, smoothing: Number(event.target.value) }))} /></label>
         <label className="live-check"><input type="checkbox" checked={showCamera} onChange={event => setShowCamera(event.target.checked)} />{t.cameraPreview}</label>
         <video ref={video} autoPlay muted playsInline className={showCamera ? 'camera-preview' : 'camera-preview camera-hidden'} style={{ transform: options.mirror ? 'scaleX(-1)' : undefined }} aria-label={t.cameraPreview} />
+        <details className="tracking-calibration" data-testid="tracking-calibration" open={!!correction.profile || correctionError}>
+          <summary>{t.faceCalibration}</summary>
+          <label className="live-check"><input type="checkbox" checked={correction.enabled} disabled={!correction.profile} onChange={event => changeCorrection({ ...correction, enabled: event.target.checked })} />{t.useFaceCalibration}</label>
+          <div className="live-buttons"><button type="button" onClick={() => profileInput.current?.click()}>{t.importFaceCalibration}</button><button type="button" disabled={!correction.profile} onClick={() => { changeCorrection({ enabled: false, profile: null }); setCorrectionError(false); }}>{t.clearFaceCalibration}</button></div>
+          <input ref={profileInput} type="file" hidden accept=".json,application/json" aria-label={t.importFaceCalibration} onChange={event => {
+            const input = event.currentTarget, file = input.files?.[0]; if (!file) return;
+            void (async () => {
+              try {
+                if (file.size > 65536) throw new Error('Profile too large');
+                const profile = parseCalibrationProfile(JSON.parse(await file.text()));
+                if (!profile) throw new Error('Invalid profile');
+                changeCorrection({ profile, enabled: true }); setCorrectionError(false);
+              } catch { setCorrectionError(true); }
+              finally { input.value = ''; }
+            })();
+          }} />
+          <small>{t.faceCalibrationHint}</small>
+          {correctionError && <p role="alert" className="live-error">{t.faceCalibrationError}</p>}
+          {correction.profile && correction.enabled && <div className="tracking-signals" data-testid="tracking-signals">
+            {([['smile', t.faceSmile], ['left', t.faceLeftEye], ['right', t.faceRightEye]] as const).map(([key, label]) => <label key={key}>{label}<meter min="0" max="1" value={faceSignals?.[key] ?? 0} /><output data-testid={`tracking-signal-${key}`}>{faceSignals ? faceSignals[key].toFixed(2) : '—'}</output></label>)}
+          </div>}
+        </details>
       </section>
       <section><h2>{t.microphone}</h2><label className="live-check"><input type="checkbox" checked={micActive} disabled={!micActive && viewState !== 'ready'} onChange={event => { if (event.target.checked) void microphone.current?.start(micId).then(refreshDevices); else microphone.current?.stop(); }} />{t.microphone}</label>
         <select aria-label={t.microphone} value={micId} disabled={micActive} onChange={event => setMicId(event.target.value)}><option value="">{t.defaultDevice}</option>{devices.filter(device => device.kind === 'audioinput' && device.deviceId).map((device, i) => <option key={device.deviceId} value={device.deviceId}>{device.label || `${t.microphone} ${i + 1}`}</option>)}</select>

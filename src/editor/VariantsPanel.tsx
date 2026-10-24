@@ -7,6 +7,8 @@ import { CopyButton } from './CopyButton';
 import { Icon } from './Icon';
 
 const labels = {
+  eyes_smile_open: 'eyesSmileOpen',
+  mouth_smile: 'mouthSmile',
   eyes_closed: 'eyesClosed', eyes_half: 'eyesHalf', eyes_smile: 'eyesSmile', eyes_sad: 'eyesSad', eyes_surprise: 'eyesSurprise',
   mouth_a: 'mouthA', mouth_a_half: 'mouthAHalf', mouth_i: 'mouthI', mouth_o: 'mouthO', mouth_angry: 'mouthAngry', mouth_sad: 'mouthSad',
 } as const satisfies Record<VariantName, string>;

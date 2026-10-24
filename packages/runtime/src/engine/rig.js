@@ -7,6 +7,8 @@ export const PARAMS = [
   { id: 'breath', label: 'Breath', min: 0, max: 1, def: 0, group: 'Head and body' },
   { id: 'eyeLOpen', label: 'Left eye open', min: 0, max: 1.25, def: 1, group: 'Eyes and brows' },
   { id: 'eyeROpen', label: 'Right eye open', min: 0, max: 1.25, def: 1, group: 'Eyes and brows' },
+  { id: 'eyeLWide', label: 'Left eye wide', min: 0, max: 1, def: 0, group: 'Eyes and brows' },
+  { id: 'eyeRWide', label: 'Right eye wide', min: 0, max: 1, def: 0, group: 'Eyes and brows' },
   { id: 'eyeSmile', label: 'Eye smile', min: 0, max: 1, def: 0, group: 'Eyes and brows' },
   { id: 'gazeX', label: 'Gaze X', min: -1, max: 1, def: 0, group: 'Eyes and brows' },
   { id: 'gazeY', label: 'Gaze Y', min: -1, max: 1, def: 0, group: 'Eyes and brows' },
@@ -97,7 +99,26 @@ export function createRig(rig) {
 
   const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
-  function headWeight(x, y) { return 1 - sstep(...HEAD.weightBand, y); }
+  // Long hair can extend below the neck's vertical fade. Regions carry the whole
+  // lock through head roll, including its outline, without rotating the torso.
+  // Feather outward into transparent pixels rather than across the hair itself.
+  function rollRegionWeight(x, y, region) {
+    const points = region.outline;
+    let inside = false, distance = Infinity;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+      const [ax, ay] = points[j], [bx, by] = points[i];
+      if ((ay > y) !== (by > y) && x < (bx - ax) * (y - ay) / (by - ay) + ax) inside = !inside;
+      const vx = bx - ax, vy = by - ay, length2 = vx * vx + vy * vy;
+      const t = length2 ? Math.max(0, Math.min(1, ((x - ax) * vx + (y - ay) * vy) / length2)) : 0;
+      distance = Math.min(distance, Math.hypot(x - ax - t * vx, y - ay - t * vy));
+    }
+    return inside ? 1 : 1 - sstep(0, region.feather, distance);
+  }
+  function headWeight(x, y) {
+    let weight = 1 - sstep(...HEAD.weightBand, y);
+    for (const region of HEAD.rollRegions ?? []) weight = Math.max(weight, rollRegionWeight(x, y, region));
+    return weight;
+  }
   // The turn bump already fades out towards its rim, so it only needs a gentle cut-off
   // (stacking both fades is what sheared the neck).
   function turnWeight(x, y) { return 1 - sstep(...HEAD.turnBand, y); }
@@ -138,11 +159,38 @@ export function createRig(rig) {
 
   // Per-vertex weights of the base layer, computed once from the rest position.
   // hair: 0..1 from hairmask.png, so strands only move actual hair.
+  function wideningWeights(x, y) {
+    const cfg = rig.eyeFrames?.widening;
+    if (!cfg) return [];
+    const weights = [];
+    EYES.forEach((e, i) => {
+      if (x <= e.x0 || x >= e.x1) return;
+      const u = (x - e.x0) / (e.x1 - e.x0), top = sampled(e.top, u), bot = sampled(e.bot, u);
+      if (bot - top < 1) return;
+      const t = Math.max(0, Math.min(1, (y - top) / (bot - top)));
+      const margin = Math.max(24, (bot - top) * .55, cfg.upper * 2.1, cfg.lower * 2.1);
+      const fade = y < top ? 1 - sstep(0, margin, top - y) : y > bot ? 1 - sstep(0, margin, y - bot) : 1;
+      const offset = (-cfg.upper + (cfg.upper + cfg.lower) * t) * Math.sin(Math.PI * u) ** 2 * fade;
+      if (offset) weights.push([i, offset]);
+    });
+    return weights;
+  }
   function baseWeights(x, y, hair = 1) {
+    const swings = [];
+    let swingWeight = 0;
+    (HEAD.rollRegions ?? []).forEach((region, i) => {
+      if (!region.swing) return;
+      const weight = rollRegionWeight(x, y, region) * sstep(...region.swing.band, y);
+      if (weight > 0) swings.push([i, weight]);
+      swingWeight = Math.max(swingWeight, weight);
+    });
     return {
       head: headWeight(x, y),
       turn: turnWeight(x, y),
-      strands: strandWeights(x, y, hair),
+      widening: wideningWeights(x, y),
+      strands: strandWeights(x, y, swingWeight ? hair * (1 - swingWeight) : hair),
+      swings,
+      rigid: (HEAD.rigidRegions ?? []).map((region, i) => [i, rollRegionWeight(x, y, region)]).filter(([, weight]) => weight > 0),
       bunL: gaussian(x, y, rig.buns?.bunL),
       bunR: gaussian(x, y, rig.buns?.bunR),
       brow: gaussian(x, y, rig.face.brow) * (1 - sstep(...rig.face.brow.band, y)),
@@ -198,7 +246,7 @@ export function createRig(rig) {
   }
 
   // Base layer: hair and face-part offsets are added in rest space, then head, then body.
-  function deformBase(x, y, w, P, phys, out) {
+  function deformBaseFree(x, y, w, P, phys, out) {
     const p = out;
     p[0] = x; p[1] = y;
     const g = phys.gain;
@@ -225,9 +273,50 @@ export function createRig(rig) {
       - ax * 9 * w.earR + ax * 4 * w.earL - ax * 10 * (w.bunL + w.bunR);
     p[1] -= ay * (6 * w.nose + 3 * w.mouth);
     p[1] += (y - rig.face.eyeA.cy) * -0.06 * Math.abs(ay) * w.eyeA + (y - rig.face.eyeB.cy) * -0.06 * Math.abs(ay) * w.eyeB;
+    // Deform the original eye, surrounding skin and any covering sprites together.
+    // Corners stay pinned; half/closed eyes suppress widening independently per side.
+    for (const [i, offset] of w.widening ?? []) {
+      const wide = i === 0 ? P.eyeRWide : P.eyeLWide;
+      const open = i === 0 ? P.eyeROpen : P.eyeLOpen;
+      const gate = sstep(Math.min(rig.eyeFrames?.openMin ?? .75, .95), 1, open);
+      p[1] += offset * Math.max(0, Math.min(1, wide ?? 0)) * gate;
+    }
+    // One rotation carries the complete lock and its outline. A root blend
+    // releases it smoothly from the scalp; old rigs retain strand-only motion.
+    for (const [i, weight] of w.swings ?? []) {
+      const angle = phys.rollRegions?.[i] ?? 0;
+      const swing = HEAD.rollRegions[i].swing;
+      if (angle) rotateAround(p, ...swing.pivot, angle * weight);
+    }
     applyHead(p, w.head, P, w.turn);
     applyBody(p, y, P, w.chest, w.breath, w.shoulder);
     return p;
+  }
+
+  // Optional ear/horn patches move with their scalp attachment as one shape.
+  // The legacy turn field varies from root to tip and can fold a pointed ear.
+  const rigidAnchors = (HEAD.rigidRegions ?? []).map(region => baseWeights(...region.anchor, 0));
+  const rigidTmp = [0, 0];
+  function rigidFrame(i, P, phys) {
+    const [cx, cy] = HEAD.rigidRegions[i].anchor, anchorW = rigidAnchors[i];
+    const anchor = deformBaseFree(cx, cy, anchorW, P, phys, [0, 0]);
+    const angle = -P.angleZ / 30 * HEAD.maxRoll * anchorW.head
+      - P.bodyAngleZ / 10 * BODY.maxRoll * (1 - sstep(...BODY.rollBand, cy));
+    return { anchor, angle };
+  }
+  function deformBase(x, y, w, P, phys, out) {
+    deformBaseFree(x, y, w, P, phys, out);
+    if (!w.rigid?.length) return out;
+    const [i, weight] = w.rigid.reduce((best, hit) => hit[1] > best[1] ? hit : best);
+    const [cx, cy] = HEAD.rigidRegions[i].anchor, anchorW = rigidAnchors[i];
+    deformBaseFree(cx, cy, anchorW, P, phys, rigidTmp);
+    const angle = -P.angleZ / 30 * HEAD.maxRoll * anchorW.head
+      - P.bodyAngleZ / 10 * BODY.maxRoll * (1 - sstep(...BODY.rollBand, cy))
+      + (phys.rigidRegions?.[i] ?? 0);
+    const c = Math.cos(angle), s = Math.sin(angle), dx = x - cx, dy = y - cy;
+    out[0] += (rigidTmp[0] + dx * c - dy * s - out[0]) * weight;
+    out[1] += (rigidTmp[1] + dx * s + dy * c - out[1]) * weight;
+    return out;
   }
 
   // ---- hand / forearm ----
@@ -295,5 +384,9 @@ export function createRig(rig) {
     const w = baseWeights(t.pivot[0], t.pivot[1]);
     return deformBase(t.pivot[0], t.pivot[1], w, P, phys, out);
   }
-  return { IMG, EYES, MOUTH, CHEEKS, STRANDS, TASSELS, headWeight, turnWeight, baseWeights, deformBase, applyHead, applyBody, handWeights, handFrame, deformHand, eyePartY, eyePartAlpha, tasselAnchor };
+  function attachmentAngle(t, P) {
+    return -P.angleZ / 30 * HEAD.maxRoll * headWeight(...t.pivot)
+      - P.bodyAngleZ / 10 * BODY.maxRoll * (1 - sstep(...BODY.rollBand, t.pivot[1]));
+  }
+  return { IMG, EYES, MOUTH, CHEEKS, STRANDS, TASSELS, headWeight, turnWeight, baseWeights, deformBase, rigidFrame, attachmentAngle, applyHead, applyBody, handWeights, handFrame, deformHand, eyePartY, eyePartAlpha, tasselAnchor };
 }

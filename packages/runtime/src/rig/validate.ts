@@ -19,6 +19,7 @@ const wholeNumber: Check = (v, p, e) => {
 const string: Check = (v, p, e) => {
   if (typeof v !== 'string' || !v.trim()) e.push(`${p}: expected a non-empty string`);
 };
+const boolean: Check = (v, p, e) => { if (typeof v !== 'boolean') e.push(`${p}: expected a boolean`); };
 const array = (item: Check, min = 0, max = Infinity): Check => (v, p, e) => {
   if (!Array.isArray(v)) { e.push(`${p}: expected an array`); return; }
   if (v.length < min || v.length > max) e.push(`${p}: expected ${min}..${max} items`);
@@ -49,7 +50,13 @@ const schema = (draft: boolean) => object({
   version: (v, p, e) => { if (v !== 1) e.push(`${p}: only version 1 is supported`); },
   image: object({ width: integer, height: integer }),
   head: object({ ...ellipseFields, shiftX: number, shiftY: number, pivotX: number,
-    pivotY: number, maxRoll: number, weightBand: band, turnBand: band }),
+    pivotY: number, maxRoll: number, weightBand: band, turnBand: band,
+    rigidRegions: array(object({ outline: polygon, feather: positive, anchor: point,
+      sway: object({ tip: point, frequency: positive, damping: positive, maxAngle: positive, lag: unit, inertia: unit }),
+    }, ['sway'])),
+    rollRegions: array(object({ outline: polygon, feather: positive,
+      swing: object({ pivot: point, length: positive, band, gravity: unit, frequency: positive, damping: positive, maxAngle: positive }),
+    }, ['swing'])) }, ['rollRegions', 'rigidRegions']),
   body: object({ pivotX: number, pivotY: number, maxRoll: number, breathBand: band,
     rollBand: band, chest: ellipse, shoulders: array(ellipse) }),
   face: object({ nose: ellipse, mouth: ellipse, eyeA: ellipse, eyeB: ellipse,
@@ -58,12 +65,21 @@ const schema = (draft: boolean) => object({
   buns: object({ bunL: ellipse, bunR: ellipse }, ['bunL', 'bunR']),
   eyes: array(object({ opening: polygon, roi: polygon, x0: number, x1: number,
     top: array(number, 24, 24), bot: array(number, 24, 24) }, draft ? ['x0', 'x1', 'top', 'bot'] : []), 2, 2),
+  eyeFrames: object({ closedMax: unit, openMin: unit, smileOpenSprite: boolean,
+    widening: object({ upper: positive, lower: positive }),
+  }, ['smileOpenSprite', 'widening']),
   mouth: object({ cx: number, cy: number, angle: number, halfLen: positive, bow: number,
-    area: object({ ...ellipseFields, angle: number }) }),
+    area: object({ ...ellipseFields, angle: number }),
+    stability: object({ openThreshold: unit, closeThreshold: unit, largeThreshold: unit, smallThreshold: unit, minOpenSeconds: unit, minSmallSeconds: unit, minLargeSeconds: unit }, ['minSmallSeconds', 'minLargeSeconds']),
+  }, ['stability']),
   cheeks: array(point, 2, 2),
   strands: array(object({ name: string, nodes: line, sigma: positive, k: positive, max: positive })),
   accessories: array(object({ name: string, pivot: point, tip: point, split: unit,
-    box: array(wholeNumber, 4, 4), color: object({ redness: unit, minRed: number }) })),
+    box: array(wholeNumber, 4, 4), color: object({ redness: unit, minRed: number }),
+    outline: polygon, keepLargest: boolean, rootCover: polygon,
+    pendulum: object({ mode: (v, p, e) => { if (v !== 'upright') e.push(`${p}: expected upright`); }, frequency: positive, damping: positive, inertia: unit, maxAngle: positive, maxBend: positive }),
+    twitch: object({ interval: band, angle: number }),
+  }, ['outline', 'keepLargest', 'rootCover', 'pendulum', 'twitch'])),
   hand: object({ outline: polygon, jaw: line, jawRange: band, background: polygon,
     elbow: point, wrist: point, knuckle: point, contact: point, forearmShare: unit,
     armBand: band, wristBand: band, handBand: band, fingerXBand: band,
@@ -72,13 +88,22 @@ const schema = (draft: boolean) => object({
     y0: wholeNumber, y1: wholeNumber, cell: integer }), handCell: integer,
     tasselCell: integer, eyeBallCell: integer, eyeCell: integer, spriteCell: integer }),
   view: object({ padTop: number, padSide: number, gazeCenter: point }, ['gazeCenter']),
-}, ['buns', 'strands', 'accessories', 'hand']);
+}, ['buns', 'strands', 'accessories', 'hand', 'eyeFrames']);
 
 export function validateRig(value: unknown, options: { draft?: boolean } = {}): string[] {
   const errors: string[] = [];
   schema(options.draft ?? false)(value, 'rig', errors);
   if (errors.length) return errors;
   const rig = value as Rig;
+  for (const [i, region] of (rig.head.rigidRegions ?? []).entries()) {
+    if (region.sway && region.sway.tip.every((n, axis) => n === region.anchor[axis]))
+      errors.push(`rig.head.rigidRegions[${i}].sway.tip: must differ from anchor`);
+  }
+  if (rig.eyeFrames && rig.eyeFrames.closedMax >= rig.eyeFrames.openMin)
+    errors.push('rig.eyeFrames: closedMax must be less than openMin');
+  const stability = rig.mouth.stability;
+  if (stability && !(stability.closeThreshold < stability.openThreshold && stability.openThreshold < stability.smallThreshold && stability.smallThreshold < stability.largeThreshold))
+    errors.push('rig.mouth.stability: require closeThreshold < openThreshold < smallThreshold < largeThreshold');
   rig.eyes.forEach((eye, i) => {
     const curves = ['x0', 'x1', 'top', 'bot'] as const;
     if (options.draft && curves.every(key => eye[key] === undefined)) return;
@@ -98,6 +123,16 @@ export function validateRig(value: unknown, options: { draft?: boolean } = {}): 
       errors.push(`rig.strands[${i}].nodes: consecutive nodes must differ`);
   }
   for (const [i, accessory] of (rig.accessories ?? []).entries()) {
+    if (accessory.twitch) {
+      if (!accessory.pendulum) errors.push(`rig.accessories[${i}].twitch: requires an upright pendulum`);
+      if (accessory.twitch.interval[0] <= .53) errors.push(`rig.accessories[${i}].twitch.interval: minimum must exceed gesture duration (0.53 seconds)`);
+      if (accessory.twitch.angle === 0 || Math.abs(accessory.twitch.angle) > (accessory.pendulum?.maxAngle ?? 0))
+        errors.push(`rig.accessories[${i}].twitch.angle: magnitude must be positive and no greater than pendulum.maxAngle`);
+    }
+    for (const key of ['outline', 'rootCover'] as const) {
+      if (accessory[key]?.some(([x, y]) => x < 0 || x > rig.image.width || y < 0 || y > rig.image.height))
+        errors.push(`rig.accessories[${i}].${key}: must stay inside the image`);
+    }
     if (accessory.box[0] < 0 || accessory.box[1] < 0 || accessory.box[2] > rig.image.width || accessory.box[3] > rig.image.height)
       errors.push(`rig.accessories[${i}].box: rectangle must stay inside the image`);
     if (accessory.split <= 0 || accessory.split >= 1) errors.push(`rig.accessories[${i}].split: must be strictly between 0 and 1`);

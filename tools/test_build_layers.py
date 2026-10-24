@@ -20,6 +20,29 @@ spec.loader.exec_module(builder)
 
 
 class BuildLayersTest(unittest.TestCase):
+    def test_polygon_accessory_can_exclude_detached_neighbor_and_keep_edge(self):
+        rgba = np.zeros((80, 100, 4), dtype=np.uint8)
+        rgba[10:50, 20:50] = [65, 45, 80, 255]
+        rgba[10:50, 50] = [65, 45, 80, 12]
+        rgba[15:20, 65:70] = [255, 120, 255, 255]
+        accessory = {'outline': [[10, 5], [80, 5], [80, 60], [10, 60]], 'keepLargest': True}
+        mask = builder.accessory_mask(rgba, accessory)
+        self.assertGreater(mask[25, 25], 0)
+        self.assertGreater(mask[25, 50], 0)
+        self.assertEqual(mask[17, 67], 0)
+
+    def test_polygon_accessory_keeps_purple_and_dark_ink_and_exports_root_cover(self):
+        self.rig['accessories']=[{'name':'ear','pivot':[50,60],'tip':[50,12],'split':.4,'box':[35,8,65,66],
+            'color':{'redness':.9,'minRed':200},'outline':[[35,8],[65,8],[65,66],[35,66]],'rootCover':[[30,60],[70,60],[70,72],[30,72]]}]
+        image=Image.open(self.project/'source.png').convert('RGBA')
+        ImageDraw.Draw(image).rectangle((40,12,60,59),fill=(65,45,80,255));image.save(self.project/'source.png')
+        self.draft.write_text(json.dumps(self.rig))
+        result=self.run_cli();self.assertEqual(result.returncode,0,result.stderr)
+        meta=json.loads((self.project/'built/layers.json').read_text())
+        self.assertIn('ear',meta['layers']);self.assertIn('ear_root_cover',meta['layers'])
+        x,y,_,_=meta['layers']['ear']
+        with Image.open(self.project/'built/ear.png') as cut:
+            self.assertEqual(cut.convert('RGBA').getpixel((50-x,25-y)),(65,45,80,255))
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

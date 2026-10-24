@@ -31,6 +31,11 @@ input[type="color"] { width: 100%; height: 32px; border: 0; padding: 0; }
 .live-open { display: inline-block; border: 1px solid #2d67b2; border-radius: 7px; padding: 8px 10px; color: #2d67b2; text-decoration: none; }
 .camera-preview { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 7px; background: #162132; }
 .camera-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.tracking-calibration { margin-top: 12px; }
+.tracking-calibration summary { cursor: pointer; font-weight: 600; }
+.tracking-signals label { display: grid; grid-template-columns: minmax(0, 1fr) 1fr 3em; align-items: center; font-size: 12px; }
+.tracking-signals meter { width: 100%; }
+.tracking-signals output { text-align: right; font-variant-numeric: tabular-nums; }
 .obs-url { font-size: 11px; margin: 10px 0; }
 .live-privacy { color: #546a87; font-size: 12px; margin: 0 4px; }
 .live-error { color: #aa2020; }

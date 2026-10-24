@@ -1,5 +1,6 @@
 // Vite bundles its config before applying aliases, so use the public source entry here.
 import { PARAMS } from '../../packages/runtime/src/index';
+import { FaceCalibration, validCalibrationShapes, type TrackingCalibration } from './calibration';
 
 export interface FaceResult {
   faceLandmarks: unknown[][];
@@ -11,7 +12,7 @@ export interface TrackingOptions { mirror: boolean; sensitivity: number; smoothi
 export const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, Number.isFinite(value) ? value : min));
 export const faceNeutral: Record<string, number> = {
   angleX: 0, angleY: 0, angleZ: 0, bodyAngleX: 0, bodyAngleZ: 0,
-  eyeLOpen: 1, eyeROpen: 1, gazeX: 0, gazeY: 0, mouthOpen: 0, mouthForm: 0, browY: 0, eyeSmile: 0, eyeSmileL: 0,
+  eyeLOpen: 1, eyeROpen: 1, eyeLWide: 0, eyeRWide: 0, gazeX: 0, gazeY: 0, mouthOpen: 0, mouthForm: 0, browY: 0, eyeSmile: 0, eyeSmileL: 0,
 };
 export function readFace(result: FaceResult): RawFace | null {
   const matrix = result.facialTransformationMatrixes[0]?.data;
@@ -43,8 +44,10 @@ export function mapFace(face: RawFace, neutral: RawFace | null, options: Trackin
     return blink >= 0.85 ? 0 : clamp((1 - blink) / Math.max(0.2, 1 - n(`eyeBlink${side}`)), 0, 1.25);
   };
   const smile = clamp((mean('mouthSmileLeft', 'mouthSmileRight') + mean('cheekSquintLeft', 'cheekSquintRight')) * 0.3);
+  const wide = (side: string) => s(`eyeBlink${side}`) >= .5 ? 0 : clamp((d(`eyeWide${side}`) - .04) / .20);
   return { angleX: x, angleY: y, angleZ: z, bodyAngleX: x * 0.2, bodyAngleZ: z * 0.2,
     eyeLOpen: open(options.mirror ? 'Right' : 'Left'), eyeROpen: open(options.mirror ? 'Left' : 'Right'),
+    eyeLWide: wide(options.mirror ? 'Right' : 'Left'), eyeRWide: wide(options.mirror ? 'Left' : 'Right'),
     gazeX: clamp((d('eyeLookOutRight') - d('eyeLookInRight') + d('eyeLookInLeft') - d('eyeLookOutLeft')) * mirror, -1, 1),
     gazeY: clamp(mean('eyeLookUpLeft', 'eyeLookUpRight') - mean('eyeLookDownLeft', 'eyeLookDownRight'), -1, 1),
     mouthOpen: clamp((d('jawOpen') - Math.max(0, d('mouthClose'))) * gain / Math.max(0.2, 1 - n('jawOpen'))),
@@ -63,15 +66,33 @@ export class FacePose {
   private seen = -Infinity;
   private params = { ...faceNeutral };
   private weight = 0;
+  private correction: FaceCalibration | null = null;
+  private correctionSeen: number | null = null;
+  private correctedEyes = [1, 1];
+  private correctedWide = [0, 0];
+  setCalibration(config: TrackingCalibration | null) {
+    this.correction = config ? new FaceCalibration(config) : null;
+    this.resetCalibration();
+  }
+  resetCalibration() { this.correction?.reset(); this.correctionSeen = null; this.correctedEyes = [1, 1]; this.correctedWide = [0, 0]; }
   update(result: FaceResult, now: number) {
     const face = readFace(result);
     if (face) { this.face = face; this.seen = now; }
+    if (this.correction) {
+      // Validate original scores before readFace clamps non-finite input to zero.
+      const shapes = Object.fromEntries((result.faceBlendshapes[0]?.categories ?? []).map(c => [c.categoryName, c.score]));
+      if (!face || !validCalibrationShapes(shapes)) this.resetCalibration();
+      else {
+        this.correction.update(shapes, this.correctionSeen === null ? 0 : (now - this.correctionSeen) / 1000);
+        this.correctionSeen = now;
+      }
+    }
   }
   calibrate(now: number) {
     if (!this.face || now - this.seen > 500) return false;
     this.neutral = structuredClone(this.face); this.params = { ...faceNeutral }; return true;
   }
-  reset() { this.face = null; this.neutral = null; this.seen = -Infinity; }
+  reset() { this.face = null; this.neutral = null; this.seen = -Infinity; this.resetCalibration(); }
   sample(now: number, dt: number, options: TrackingOptions) {
     const tracking = !!this.face && now - this.seen <= 500;
     const target = tracking ? mapFace(this.face!, this.neutral, options) : faceNeutral;
@@ -79,7 +100,26 @@ export class FacePose {
     if (tracking) for (const eye of ['eyeLOpen', 'eyeROpen']) if (target[eye] === 0) this.params[eye] = 0;
     this.weight = tracking ? 1 : this.weight * Math.exp(-dt / 0.2);
     if (this.weight < 0.005) this.weight = 0;
-    return { tracking, params: { ...this.params }, weight: this.weight };
+    const params = { ...this.params };
+    if (this.correction) {
+      if (this.correctionSeen === null || now - this.correctionSeen > 300) this.resetCalibration();
+      const corrected = this.correction.output;
+      const eyes = options.mirror ? [...corrected.eyes].reverse() : corrected.eyes;
+      const wideEyes = options.mirror ? [...corrected.wideEyes].reverse() : corrected.wideEyes;
+      for (let i = 0; i < 2; i++) {
+        const tau = eyes[i] < this.correctedEyes[i] ? .025 : .05;
+        this.correctedEyes[i] += (eyes[i] - this.correctedEyes[i]) * (1 - Math.exp(-Math.max(0, dt) / tau));
+        const wideTau = wideEyes[i] > this.correctedWide[i] ? .05 : .09;
+        this.correctedWide[i] += (wideEyes[i] - this.correctedWide[i]) * (1 - Math.exp(-Math.max(0, dt) / wideTau));
+      }
+      params.eyeLOpen = this.correctedEyes[0]; params.eyeROpen = this.correctedEyes[1];
+      params.eyeLWide = Math.max(params.eyeLWide, this.correctedWide[0]);
+      params.eyeRWide = Math.max(params.eyeRWide, this.correctedWide[1]);
+      params.eyeSmile = params.eyeSmileL = corrected.smile;
+      if (!corrected.valid) params.eyeLWide = params.eyeRWide = 0;
+    }
+    if (!tracking) params.eyeLWide = params.eyeRWide = 0;
+    return { tracking, params, weight: this.weight };
   }
 }
 export function rmsLevel(samples: Float32Array, gain: number): number {

@@ -123,6 +123,7 @@ individually; readers must not require a complete set.
 | `eyes_closed_0`, `eyes_closed_1` | Closed eyes with relaxed lids. |
 | `eyes_half_0`, `eyes_half_1` | Half-open eyes. |
 | `eyes_smile_0`, `eyes_smile_1` | Closed eyes in a smile. |
+| `eyes_smile_open_0`, `eyes_smile_open_1` | Optional smiling open eyes, shown per eye when openness reaches `eyeFrames.openMin` (default 0.75) and smile at least 0.3, outside other drawn expression moods. Set `eyeFrames.smileOpenSprite: false` to keep source open eyes while smiling. Half-open and closed eyes retain their usual drawings. Older runtimes ignore these sprites. |
 | `eyes_sad_0`, `eyes_sad_1` | Open eyes for the sad expression. |
 | `eyes_surprise_0`, `eyes_surprise_1` | Wide-open eyes for the surprised expression. |
 | `mouth_a` | Open mouth for “a”. |
@@ -131,6 +132,7 @@ individually; readers must not require a complete set.
 | `mouth_o` | Rounded mouth for “o”; also reused, with reduced width, for “u”. |
 | `mouth_angry` | Closed mouth for the angry expression (corners turned down). |
 | `mouth_sad` | Closed mouth for the sad expression (corners drooping). |
+| `mouth_smile` | Optional smiling closed mouth, shown when both eye-smile signals reach 0.3, outside angry/sad mouth moods. Speech uses open mouth drawings as usual. Without it, the source closed mouth is kept. |
 
 The eye suffix is the index in `rig.eyes`, not a separate left/right convention.
 The expression eyes replace the open and half-open eye while the live expression
