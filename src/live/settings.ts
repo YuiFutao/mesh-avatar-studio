@@ -8,6 +8,11 @@ export interface ViewSettings {
   fit: 'contain' | 'cover';
   idle: boolean;
   lighting?: LightingSettings;
+  fps?: number;
+}
+export function trackingFrameRate(search: string): number {
+  const fps = Number(new URLSearchParams(search).get('trackingFps'));
+  return [15, 20, 30].includes(fps) ? fps : 30;
 }
 export function backgroundColor(value: string | null): string {
   if (value === 'green') return '#00ff00';
@@ -17,6 +22,7 @@ export function backgroundColor(value: string | null): string {
 }
 export function viewSettings(search: string, origin = globalThis.location?.origin ?? 'http://localhost'): ViewSettings {
   const query = new URLSearchParams(search), project = query.get('project');
+  const fps = Number(query.get('fps'));
   let avatar: string | undefined;
   try {
     const value = query.get('avatar');
@@ -27,6 +33,7 @@ export function viewSettings(search: string, origin = globalThis.location?.origi
   } catch { /* Invalid or external URLs fall back to the sample. */ }
   return { project: project && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(project) ? project : SAMPLE_PROJECT,
     ...(avatar ? { avatar } : {}),
+    ...(Number.isInteger(fps) && fps >= 1 && fps <= 60 ? { fps } : {}),
     background: backgroundColor(query.get('bg')), fit: query.get('fit') === 'cover' ? 'cover' : 'contain', idle: query.get('idle') !== '0', ...(query.has('light') ? { lighting: lightingFromQuery(query) } : {}) };
 }
 export function streamUrl(settings: ViewSettings, origin: string): string {
@@ -34,5 +41,6 @@ export function streamUrl(settings: ViewSettings, origin: string): string {
   url.search = new URLSearchParams({ project: settings.project, bg: settings.background, fit: settings.fit, idle: settings.idle ? '1' : '0' }).toString();
   if (settings.avatar) { url.searchParams.delete('project'); url.searchParams.set('avatar', settings.avatar); }
   if (settings.lighting) writeLightingQuery(url.searchParams, settings.lighting);
+  if (settings.fps) url.searchParams.set('fps', String(settings.fps));
   return url.href;
 }

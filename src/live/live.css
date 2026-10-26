@@ -16,9 +16,12 @@ p { line-height: 1.5; } small { display: block; color: #546a87; line-height: 1.5
 .live-languages { display: flex; gap: 4px; }
 .live-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 22px; align-items: start; }
 .live-view { position: sticky; top: 18px; min-width: 0; }
-.live-preview { height: calc(100dvh - 150px); min-height: 320px; border: 1px solid #d5dfeb; border-radius: 12px; overflow: hidden; }
+.live-preview { position: relative; height: calc(100dvh - 180px); min-height: 320px; border: 1px solid #d5dfeb; border-radius: 12px; overflow: hidden; }
 .checkerboard { background-image: conic-gradient(#e1e5eb 25%, #f8f9fb 0 50%, #e1e5eb 0 75%, #f8f9fb 0); background-size: 24px 24px; }
 .live-preview canvas { display: block; width: 100%; height: 100%; }
+.live-preview[data-preview="off"] canvas { visibility: hidden; }
+.avatar-preview-toggle { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; }
+.avatar-preview-paused { position: absolute; inset: 0; display: grid; place-content: center; padding: 28px; text-align: center; color: #546a87; }
 .live-controls { display: flex; flex-direction: column; gap: 14px; }
 .live-controls section { padding: 16px; border: 1px solid #d5dfeb; border-radius: 12px; background: white; }
 .live-controls label { display: flex; flex-direction: column; gap: 7px; margin: 12px 0; }

@@ -6,7 +6,8 @@ export const neutralParameters: Record<string, number> = Object.fromEntries(PARA
 export interface FrameTiming { frames: number; totalMs: number; maxMs: number }
 export async function createAvatarView(canvas: HTMLCanvasElement, settings: ViewSettings,
   beforeFrame?: (avatar: MeshAvatar, now: number, dt: number) => void,
-  afterFrame?: (avatar: MeshAvatar, now: number) => void) {
+  afterFrame?: (avatar: MeshAvatar, now: number) => void,
+  drawEnabled: () => boolean = () => true) {
   canvas.dataset.state = 'loading';
   const options = { manual: true, fit: settings.fit, preserveMouthForm: true };
   let avatar: MeshAvatar;
@@ -22,7 +23,7 @@ export async function createAvatarView(canvas: HTMLCanvasElement, settings: View
   if (!settings.idle) avatar.setParameters(neutralParameters);
   canvas.dataset.state = 'ready';
   const timing: FrameTiming = { frames: 0, totalMs: 0, maxMs: 0 };
-  let raf = 0, previous = performance.now(), lastPaint = previous;
+  let raf = 0, previous = performance.now(), lastPaint = previous, lastAnimation = previous, nextFrame = previous;
   const update = (now: number, draw = true) => {
     const frameElapsed = Math.max(0, (now - previous) / 1000);
     const dt = Math.min(0.05, Math.max(0.001, frameElapsed)); previous = now;
@@ -33,10 +34,21 @@ export async function createAvatarView(canvas: HTMLCanvasElement, settings: View
     if (draw) { timing.frames++; timing.totalMs += elapsed; timing.maxMs = Math.max(timing.maxMs, elapsed); }
     afterFrame?.(avatar, now);
   };
-  const frame = (now: number) => { lastPaint = now; update(now); raf = requestAnimationFrame(frame); };
+  const frame = (now: number) => {
+    lastAnimation = now;
+    const draw = drawEnabled(), interval = settings.fps ? 1000 / settings.fps : draw ? 0 : 1000 / 30;
+    if (!interval || now >= nextFrame) {
+      if (draw) lastPaint = now;
+      update(now, draw);
+      // Keep the deadline on its original cadence, rather than rounding 30 fps down
+      // to 20 fps when a display callback arrives slightly after a frame boundary.
+      nextFrame = interval ? now + interval - (now - nextFrame) % interval : now;
+    }
+    raf = requestAnimationFrame(frame);
+  };
   raf = requestAnimationFrame(frame);
   return { avatar, timing,
-    paintPaused(now: number) { return now - lastPaint > 1000; },
-    updateIfStalled(now: number) { if (now - previous >= 1000 / 30 - 2) update(now, false); },
+    paintPaused(now: number) { return drawEnabled() && now - lastPaint > 1000; },
+    updateIfStalled(now: number) { if (now - lastAnimation > 100 && now - previous >= 1000 / 30 - 2) update(now, false); },
     destroy() { cancelAnimationFrame(raf); avatar.destroy(); } };
 }

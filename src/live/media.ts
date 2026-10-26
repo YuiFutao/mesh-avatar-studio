@@ -18,7 +18,7 @@ export class CameraCapture {
   private results: number[] = [];
   readonly timing = { frames: 0, totalMs: 0, maxMs: 0, delegate: '', source: '' };
   constructor(private video: HTMLVideoElement, private onResult: (result: FaceResult, now: number) => void, private onState: (state: CameraState) => void,
-    private workerUrl?: string) {}
+    private workerUrl?: string, private trackingFps = 30) {}
   stop() {
     this.generation++;
     if (this.videoCallback) this.video.cancelVideoFrameCallback?.(this.videoCallback);
@@ -43,7 +43,7 @@ export class CameraCapture {
     let loadingModel = false;
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera unavailable');
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30, max: 30 }, ...(deviceId ? { deviceId: { exact: deviceId } } : {}) } });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: this.trackingFps, max: this.trackingFps }, ...(deviceId ? { deviceId: { exact: deviceId } } : {}) } });
       if (generation !== this.generation) { stream.getTracks().forEach(track => track.stop()); return; }
       this.stream = stream; this.video.srcObject = stream;
       const track = stream.getVideoTracks()[0];
@@ -73,7 +73,7 @@ export class CameraCapture {
         else if (data.type === 'tick' && !this.reader && performance.now() - this.lastCallback > 100) void this.sendBitmap(generation);
         else if (data.type === 'error') fail();
       };
-      worker.postMessage({ type: 'init' });
+      worker.postMessage({ type: 'init', ...(this.trackingFps !== 30 ? { fps: this.trackingFps } : {}) });
     } catch (error) {
       if (generation !== this.generation) return;
       this.stop();

@@ -176,6 +176,22 @@ the camera starts manually. Add `autoStartMicrophone=1` to also start microphone
 lip sync automatically with the default gain; microphone permission is still
 required. Without this option, the microphone starts manually.
 
+For lower GPU load, add `fps=30&avatarPreview=0&trackingFps=20` to the Live URL.
+The Live page stops drawing its avatar while tracking, microphone lip sync and
+parameter relay continue. **Show avatar preview** can re-enable drawing without
+restarting the camera or microphone. `trackingFps` accepts `15`, `20` or `30`
+(default `30`); `fps` caps rendering on both Live and stream pages. The copied
+OBS URL includes the rendering cap, but not the Live-only preview switch.
+Update an existing OBS Browser Source URL to include `fps=30`; changing the Live
+URL does not change an already configured OBS source.
+
+For the local Yui v03 project, `Start-Yui-v03.bat` uses these streaming settings.
+`Start-Yui-v03-Preview.bat` (or `tools/start-yui-v03.ps1 -Preview`) enables the
+avatar preview with the original rendering rate and up to 30 tracking updates per
+second. Both launchers start camera and microphone with the default microphone
+gain. Close the previous Live tab before switching launchers to avoid duplicate
+tracking sessions. Without these URL options, normal Live operation is unchanged.
+
 ### Stream view URL
 
 | Parameter | Values | Default |
@@ -185,6 +201,7 @@ required. Without this option, the microphone starts manually.
 | `bg` | `transparent`, `green`, `blue` or a hex colour such as `#336699` | `transparent` |
 | `fit` | `contain` (whole avatar) or `cover` (fill the frame) | `contain` |
 | `idle` | `1` (idle motion, blinking, breathing, hair sway) or `0` | `1` |
+| `fps` | Integer from `1` to `60`; caps rendering, without changing resolution | display refresh rate |
 | `light` | `1` enables [lighting](#lighting); omit it for no lighting | off |
 | `lx`, `ly` | Light position across and down the frame, `0`–`1` | `0.2`, `0.2` |
 | `lz` | Light height, `0.1`–`2` | `0.45` |

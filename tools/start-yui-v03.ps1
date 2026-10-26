@@ -1,5 +1,6 @@
 param(
     [switch]$NoBrowser,
+    [switch]$Preview,
     [switch]$Check
 )
 
@@ -9,8 +10,10 @@ $projectName = 'yui-chibi03-v03-ear-twitch'
 $studioPort = 5188
 $studioOrigin = "http://127.0.0.1:$studioPort"
 $livePath = "/live.html?project=$projectName&trackingProfile=/projects/$projectName/tracking-calibration.json&cameraPreview=0&autoStartCamera=1&autoStartMicrophone=1"
+if (-not $Preview) { $livePath += '&fps=30&avatarPreview=0&trackingFps=20' }
 $liveUrl = "$studioOrigin$livePath"
 $obsUrl = "$studioOrigin/stream.html?project=$projectName&bg=transparent&fit=contain&idle=1"
+if (-not $Preview) { $obsUrl += '&fps=30' }
 $rigPath = Join-Path $studioRoot "projects\$projectName\rig.json"
 $vitePath = Join-Path $studioRoot 'node_modules\vite\bin\vite.js'
 
@@ -23,6 +26,12 @@ try {
         throw 'Dependencies are missing. Run npm install in the repository first.'
     }
     Write-Host 'Mesh Avatar Studio - Yui v03 (ear twitch)'
+    if ($Preview) {
+        Write-Host 'Preview mode: avatar preview on, normal drawing rate, face tracking up to 30 fps.'
+    } else {
+        Write-Host 'Streaming mode: avatar preview off, stream drawing capped at 30 fps, face tracking up to 20 fps.'
+        Write-Host 'Update the OBS Browser Source URL below to apply its 30 fps cap.'
+    }
     Write-Host "Live: $liveUrl"
     Write-Host "OBS : $obsUrl"
     Write-Host ''

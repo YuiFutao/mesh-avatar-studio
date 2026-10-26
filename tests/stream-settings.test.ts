@@ -1,8 +1,22 @@
 import { expect, test } from 'vitest';
-import { backgroundColor, streamUrl, viewSettings } from '../src/live/settings';
+import { backgroundColor, streamUrl, viewSettings, trackingFrameRate } from '../src/live/settings';
 
 test('stream defaults are transparent, contained, idle and use the bundled sample', () => {
   expect(viewSettings('')).toEqual({ project: 'sample-miko-qipao', background: 'transparent', fit: 'contain', idle: true });
+});
+
+test('optional performance settings keep the render cap in OBS URLs and Live controls out', () => {
+  const settings = viewSettings('?project=nova&fps=30&avatarPreview=0&trackingFps=20');
+  const url = new URL(streamUrl(settings, 'http://127.0.0.1:5173'));
+  expect(settings.fps).toBe(30);
+  expect(viewSettings(url.search)).toEqual(settings);
+  expect(url.searchParams.get('fps')).toBe('30');
+  expect(url.searchParams.has('avatarPreview')).toBe(false);
+  expect(url.searchParams.has('trackingFps')).toBe(false);
+  for (const value of ['', '0', '-1', 'Infinity', '30.5', '1000', 'oops']) expect(viewSettings(`?fps=${value}`).fps).toBeUndefined();
+  for (const value of ['', '0', '-1', 'Infinity', '60', 'oops']) expect(trackingFrameRate(`?trackingFps=${value}`)).toBe(30);
+  expect(trackingFrameRate('?trackingFps=20')).toBe(20);
+  expect(trackingFrameRate('?trackingFps=15')).toBe(15);
 });
 test('background and query parsing accept colors but reject CSS and project paths', () => {
   for (const [value, expected] of [['green', '#00ff00'], ['blue', '#0000ff'], ['#abc', '#abc'], ['123456', '#123456'], ['url(https://example.com)', 'transparent']]) expect(backgroundColor(value)).toBe(expected);

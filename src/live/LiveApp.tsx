@@ -5,7 +5,7 @@ import { loadLightingPresets, sameLighting, saveLightingPresets } from '../light
 import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../editor/i18n';
 import { createAvatarView } from './avatar-view';
-import { viewSettings, streamUrl, backgroundColor } from './settings';
+import { viewSettings, streamUrl, backgroundColor, trackingFrameRate } from './settings';
 import { FacePose, type TrackingOptions } from './tracking';
 import { CameraCapture, MicrophoneCapture, type CameraState, type MicState, type BackgroundTracking } from './media';
 import { liveText } from './i18n';
@@ -18,6 +18,9 @@ export function LiveApp() {
   const { language, setLanguage } = useI18n(), t = liveText[language];
   const [settings, setSettings] = useState(() => { const view = viewSettings(location.search); return { ...view, lighting: view.lighting ?? loadLighting(view.project) }; });
   const [lightingOpen, setLightingOpen] = useState(false);
+  const [showAvatarPreview, setShowAvatarPreview] = useState(() => new URLSearchParams(location.search).get('avatarPreview') !== '0');
+  const avatarPreview = useRef(showAvatarPreview); avatarPreview.current = showAvatarPreview;
+  const [trackingFps] = useState(() => trackingFrameRate(location.search));
   const [presets, setPresets] = useState(() => loadLightingPresets(settings.project));
   const presetsRef = useRef(presets); presetsRef.current = presets;
   const [duplicatePage, setDuplicatePage] = useState(false);
@@ -71,14 +74,14 @@ export function LiveApp() {
   const changeCorrection = (value: typeof correction) => { setCorrection(value); saveCalibration(settings.project, settings.avatar, value); };
   const refreshDevices = () => { void navigator.mediaDevices?.enumerateDevices().then(setDevices).catch(() => undefined); };
   useEffect(() => {
-    const capture = new CameraCapture(video.current!, (result, now) => pose.current.update(result, now), state => { setCameraState(state); if (state !== 'running') { setTracking(false); pose.current.resetCalibration(); setFaceSignals(null); } });
+    const capture = new CameraCapture(video.current!, (result, now) => pose.current.update(result, now), state => { setCameraState(state); if (state !== 'running') { setTracking(false); pose.current.resetCalibration(); setFaceSignals(null); } }, undefined, trackingFps);
     const mic = new MicrophoneCapture(setMicState);
     camera.current = capture; microphone.current = mic;
     refreshDevices(); navigator.mediaDevices?.addEventListener('devicechange', refreshDevices);
     const stop = () => { capture.stop(); mic.stop(); pose.current.reset(); };
     window.addEventListener('pagehide', stop);
     return () => { stop(); navigator.mediaDevices?.removeEventListener('devicechange', refreshDevices); window.removeEventListener('pagehide', stop); };
-  }, []);
+  }, [trackingFps]);
   useEffect(() => {
     let cancelled = false, view: Awaited<ReturnType<typeof createAvatarView>> | undefined;
     const clock = new Worker(new URL('./clock-worker.ts', import.meta.url), { type: 'module' });
@@ -103,9 +106,9 @@ export function LiveApp() {
     }, (avatar, now) => {
       // An expression alone also drives the stream view, including its fade back to neutral.
       if (controls.current.cameraState === 'running' || controls.current.micState === 'micOn' || avatar.getExpression().active) send(avatar.getParameters(), now);
-    }).then(value => { if (cancelled) value.destroy(); else { view = value; avatarRef.current = value.avatar; value.avatar.setLighting(lightRef.current); value.avatar.setExpression(expressionRef.current); setViewState('ready'); } }).catch(() => { if (!cancelled) setViewState('projectError'); });
+    }, () => avatarPreview.current).then(value => { if (cancelled) value.destroy(); else { view = value; avatarRef.current = value.avatar; value.avatar.setLighting(lightRef.current); value.avatar.setExpression(expressionRef.current); setViewState('ready'); } }).catch(() => { if (!cancelled) setViewState('projectError'); });
     return () => { cancelled = true; clock.terminate(); view?.destroy(); avatarRef.current = null; };
-  }, [settings.project, settings.fit]);
+  }, [settings.project, settings.fit, settings.fps]);
   useEffect(() => {
     if (!autoStartCamera || autoStartAttempted.current || viewState !== 'ready' || !camera.current) return;
     autoStartAttempted.current = true;
@@ -174,9 +177,12 @@ export function LiveApp() {
     <header className="live-header"><div><a href="/">{t.back}</a><h1>Mesh Avatar Studio <span>{t.title}</span></h1></div>
       <div className="live-languages">{(['en', 'ja', 'zh'] as const).map(lang => <button key={lang} aria-pressed={language === lang} onClick={() => setLanguage(lang)}>{({ en: 'English', ja: '日本語', zh: '简体中文' })[lang]}</button>)}</div>
     </header>
-    <div className="live-layout"><section className="live-view"><div className="live-preview checkerboard lighting-preview" style={{ backgroundColor: settings.background, backgroundImage: settings.background === 'transparent' ? undefined : 'none' }}>
+    <div className="live-layout"><section className="live-view">
+      <label className="avatar-preview-toggle"><input type="checkbox" checked={showAvatarPreview} onChange={event => setShowAvatarPreview(event.target.checked)} />{t.avatarPreview}</label>
+      <div className="live-preview checkerboard lighting-preview" data-preview={showAvatarPreview ? 'on' : 'off'} style={{ backgroundColor: settings.background, backgroundImage: settings.background === 'transparent' ? undefined : 'none' }}>
       <canvas ref={canvas} data-testid="live-avatar" />
-      {lightingOpen && <LightHandle value={settings.lighting} onChange={changeLighting} language={language} />}
+      {!showAvatarPreview && <p className="avatar-preview-paused">{t.avatarPreviewPaused}</p>}
+      {lightingOpen && showAvatarPreview && <LightHandle value={settings.lighting} onChange={changeLighting} language={language} />}
     </div><p role="status" className={viewState === 'projectError' ? 'live-error' : ''}>{t[viewState]} · {settings.project}</p></section>
     <aside className="live-controls">
       {duplicatePage && <p role="alert" className="live-warning" data-testid="duplicate-live-page">{t.duplicatePage}</p>}

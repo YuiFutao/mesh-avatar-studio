@@ -85,6 +85,17 @@ test('permission denial produces a distinct camera status without starting a wor
   await new CameraCapture(video(), vi.fn(), state).start('');
   expect(state).toHaveBeenLastCalledWith('cameraBlocked'); expect(createWorker).not.toHaveBeenCalled();
 });
+
+test('the optional tracking rate configures camera capture and its worker without changing resolution', async () => {
+  const { stream } = media(), thread = worker(), getUserMedia = vi.fn(async () => stream);
+  vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
+  createWorker.mockReturnValue(thread);
+  const capture = new CameraCapture(video(), vi.fn(), vi.fn(), undefined, 20);
+  await capture.start('');
+  expect(getUserMedia).toHaveBeenCalledWith({ audio: false, video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 20, max: 20 } } });
+  expect(thread.postMessage).toHaveBeenCalledWith({ type: 'init', fps: 20 });
+  capture.stop();
+});
 test('microphone permission cancellation releases tracks and permission denial is reported', async () => {
   const { stream, track } = media(); let resolve!: (stream: MediaStream) => void;
   vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: () => new Promise<MediaStream>(done => { resolve = done; }) } });

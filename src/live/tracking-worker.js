@@ -4,9 +4,10 @@ const base = new URL('.', self.location.href).href.replace(/\/$/, '');
 self.exports = {};
 self.importScripts(`${base}/vision_bundle.js`);
 const { FaceLandmarker, FilesetResolver } = self.exports;
-let tracker, lastFrame = -Infinity, delegate = 'GPU', frames = 0, gpuSamples = 0, gpuMs = 0;
+let tracker, nextFrame = -Infinity, interval = 1000 / 30, delegate = 'GPU', frames = 0, gpuSamples = 0, gpuMs = 0;
 self.onmessage = async ({ data }) => {
   if (data.type === 'init') {
+    interval = 1000 / ([15, 20, 30].includes(data.fps) ? data.fps : 30);
     try {
       const files = await FilesetResolver.forVisionTasks(base);
       const options = { runningMode: 'VIDEO', numFaces: 1, outputFaceBlendshapes: true, outputFacialTransformationMatrixes: true };
@@ -17,13 +18,13 @@ self.onmessage = async ({ data }) => {
       }
       self.postMessage({ type: 'ready', delegate });
       // Also wakes the ImageBitmap fallback when video frame callbacks stop in a hidden tab.
-      self.setInterval(() => self.postMessage({ type: 'tick' }), 1000 / 30);
+      self.setInterval(() => self.postMessage({ type: 'tick' }), interval);
     } catch { self.postMessage({ type: 'error' }); }
   } else if (data.type === 'frame') {
     try {
       const now = performance.now();
-      if (tracker && data.timestamp - lastFrame >= 1000 / 30 - 2) {
-        lastFrame = data.timestamp;
+      if (tracker && data.timestamp >= nextFrame - 2) {
+        nextFrame = Number.isFinite(nextFrame) ? nextFrame + (Math.floor((data.timestamp - nextFrame + 2) / interval) + 1) * interval : data.timestamp + interval;
         const start = performance.now(), result = tracker.detectForVideo(data.frame, now), elapsed = performance.now() - start;
         self.postMessage({ type: 'result', elapsed, result: {
           faceLandmarks: result.faceLandmarks.length ? [[]] : [],

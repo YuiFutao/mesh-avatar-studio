@@ -4,6 +4,9 @@ import { samplePresent, sampleSkipReason } from './sample';
 
 test.beforeEach(() => { test.skip(!samplePresent, sampleSkipReason); });
 
+type PerformanceSamples = { draws: number[]; inferences: number[] };
+type MeasuredWindow = typeof window & { performanceSamples: PerformanceSamples };
+
 async function guardNetwork(context: BrowserContext) {
   const outside: string[] = [];
   await context.route('**/*', route => {
@@ -51,6 +54,59 @@ async function stubTracker(page: Page, moving = false) {
 async function ready(page: Page, url: string) {
   await page.goto(url); await expect(page.locator('canvas[data-state="ready"]')).toBeVisible();
 }
+
+test('streaming mode pauses Live drawing, renders stream at 30 fps and tracks at 20 fps', async ({ context, page }) => {
+  const outside = await guardNetwork(context);
+  await context.addInitScript(() => {
+    const samples = { draws: [] as number[], inferences: [] as number[] };
+    (window as MeasuredWindow).performanceSamples = samples;
+    const clear = WebGL2RenderingContext.prototype.clear;
+    WebGL2RenderingContext.prototype.clear = function(mask) {
+      samples.draws.push(performance.now()); return clear.call(this, mask);
+    };
+    const OriginalWorker = window.Worker;
+    window.Worker = class extends OriginalWorker {
+      constructor(url: string | URL, options?: WorkerOptions) {
+        super(url, options);
+        this.addEventListener('message', event => { if (event.data?.type === 'result') samples.inferences.push(performance.now()); });
+      }
+    };
+  });
+  await syntheticMedia(page); await stubTracker(page, true);
+  await page.goto('/live.html?fps=30&avatarPreview=0&trackingFps=20&cameraPreview=0&autoStartCamera=1&autoStartMicrophone=1');
+  await expect(page.getByTestId('live-avatar')).toHaveAttribute('data-state', 'ready');
+  const toggle = page.getByRole('checkbox', { name: 'Show avatar preview', exact: true });
+  await expect(toggle).not.toBeChecked();
+  await expect(page.getByTestId('tracking-status')).toHaveAttribute('data-state', 'tracking');
+  await expect(page.getByRole('checkbox', { name: 'Microphone lip sync' })).toBeChecked();
+  const url = await page.getByRole('link', { name: 'Open stream view in a new tab' }).getAttribute('href');
+  expect(new URL(url!).searchParams.get('fps')).toBe('30');
+  const stream = await context.newPage(); await ready(stream, url!);
+  await expect(stream.locator('#avatar')).toHaveAttribute('data-live', 'active');
+  const metrics = await stream.evaluate(async () => {
+    const samples = (window as MeasuredWindow).performanceSamples;
+    samples.draws.length = 0; const start = performance.now();
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    return { fps: samples.draws.length / ((performance.now() - start) / 1000) };
+  });
+  const tracking = await page.evaluate(() => {
+    const samples = (window as MeasuredWindow).performanceSamples;
+    const times = samples.inferences.slice(-50);
+    return { draws: samples.draws.length, fps: (times.length - 1) * 1000 / (times.at(-1)! - times[0]) };
+  });
+  expect(metrics.fps).toBeGreaterThan(20); expect(metrics.fps).toBeLessThanOrEqual(31);
+  expect(tracking.draws).toBe(0);
+  expect(tracking.fps).toBeGreaterThan(17); expect(tracking.fps).toBeLessThan(22);
+  await page.bringToFront(); await toggle.check();
+  await expect.poll(() => page.evaluate(() => (window as MeasuredWindow).performanceSamples.draws.length)).toBeGreaterThan(3);
+  await toggle.uncheck();
+  const count = await page.evaluate(() => (window as MeasuredWindow).performanceSamples.draws.length);
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => (window as MeasuredWindow).performanceSamples.draws.length)).toBe(count);
+  await expect(page.getByTestId('tracking-status')).toHaveAttribute('data-state', 'tracking');
+  expect(outside).toEqual([]);
+  console.log(`Streaming mode: ${JSON.stringify({ streamFps: metrics.fps, trackingFps: tracking.fps, liveDraws: tracking.draws })}`);
+});
 
 test('stream has actual alpha, exact green, no controls and no external requests', async ({ context, page }) => {
   const outside = await guardNetwork(context);

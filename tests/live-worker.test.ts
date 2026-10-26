@@ -3,6 +3,21 @@ import { runInNewContext } from 'node:vm';
 import { expect, test, vi } from 'vitest';
 
 const source = readFileSync(new URL('../src/live/tracking-worker.js', import.meta.url), 'utf8');
+test('20 fps inference resamples 30 fps input without dropping down to 15 fps', async () => {
+  const detectForVideo = vi.fn(() => ({ faceLandmarks: [], faceBlendshapes: [], facialTransformationMatrixes: [] }));
+  const tick = vi.fn(), close = vi.fn();
+  const scope = { exports: {}, postMessage: vi.fn(), setInterval: tick, location: { href: 'http://127.0.0.1/mediapipe/tracking-worker.js' },
+    importScripts: () => { scope.exports = { FaceLandmarker: { createFromOptions: async () => ({ detectForVideo }) }, FilesetResolver: { forVisionTasks: async () => ({}) } }; },
+    onmessage: async (_event: { data: Record<string, unknown> }) => {},
+  };
+  runInNewContext(source, { self: scope, performance: { now: () => 0 }, URL });
+  await scope.onmessage({ data: { type: 'init', fps: 20 } });
+  expect(tick.mock.calls[0][1]).toBe(50);
+  for (let i = 0; i < 300; i++) await scope.onmessage({ data: { type: 'frame', frame: { close }, timestamp: i * 1000 / 30 } });
+  expect(detectForVideo).toHaveBeenCalledTimes(200);
+  expect(close).toHaveBeenCalledTimes(300);
+});
+
 test('worker falls back from GPU to CPU, keeps frames local and closes both accepted and skipped frames', async () => {
   const result = { faceLandmarks: [[{ x: 0.5, y: 0.5 }]], faceBlendshapes: [], facialTransformationMatrixes: [] };
   const detectForVideo = vi.fn(() => result), create = vi.fn().mockRejectedValueOnce(new Error('GPU unavailable')).mockResolvedValue({ detectForVideo });
