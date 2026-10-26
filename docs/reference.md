@@ -172,7 +172,9 @@ Two pages served by the development server (`npm run dev`):
 The Live page also accepts `cameraPreview=0` to start with the camera preview hidden,
 and `autoStartCamera=1` to request camera access once the avatar is ready. Browser
 permission is still required. Without these options, the preview is visible and
-the camera starts manually. The microphone always starts manually.
+the camera starts manually. Add `autoStartMicrophone=1` to also start microphone
+lip sync automatically with the default gain; microphone permission is still
+required. Without this option, the microphone starts manually.
 
 ### Stream view URL
 

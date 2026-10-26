@@ -8,7 +8,7 @@ $studioRoot = Split-Path -Parent $PSScriptRoot
 $projectName = 'yui-chibi03-v03-ear-twitch'
 $studioPort = 5188
 $studioOrigin = "http://127.0.0.1:$studioPort"
-$livePath = "/live.html?project=$projectName&trackingProfile=/projects/$projectName/tracking-calibration.json&cameraPreview=0&autoStartCamera=1"
+$livePath = "/live.html?project=$projectName&trackingProfile=/projects/$projectName/tracking-calibration.json&cameraPreview=0&autoStartCamera=1&autoStartMicrophone=1"
 $liveUrl = "$studioOrigin$livePath"
 $obsUrl = "$studioOrigin/stream.html?project=$projectName&bg=transparent&fit=contain&idle=1"
 $rigPath = Join-Path $studioRoot "projects\$projectName\rig.json"
@@ -58,7 +58,7 @@ try {
 
     Write-Host 'Keep this window open while using the avatar. Close it to stop the server.'
     Write-Host 'Camera starts automatically with its preview hidden. Allow camera access if your browser asks.'
-    Write-Host 'Microphone can be enabled in the Live page.'
+    Write-Host 'Microphone lip sync starts automatically with the default gain. Allow microphone access if asked.'
     Push-Location -LiteralPath $studioRoot
     try {
         $viteArgs = @($vitePath, '--host', '127.0.0.1', '--port', "$studioPort", '--strictPort')

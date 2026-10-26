@@ -34,6 +34,8 @@ export function LiveApp() {
   const [tracking, setTracking] = useState(false), [showCamera, setShowCamera] = useState(() => new URLSearchParams(location.search).get('cameraPreview') !== '0');
   const [autoStartCamera] = useState(() => new URLSearchParams(location.search).get('autoStartCamera') === '1');
   const autoStartAttempted = useRef(false);
+  const [autoStartMicrophone] = useState(() => new URLSearchParams(location.search).get('autoStartMicrophone') === '1');
+  const autoStartMicAttempted = useRef(false);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]), [cameraId, setCameraId] = useState(''), [micId, setMicId] = useState('');
   const [gain, setGain] = useState(1), [calibrated, setCalibrated] = useState(false);
   const [copyState, setCopyState] = useState<'copied' | 'copyError' | null>(null);
@@ -110,6 +112,11 @@ export function LiveApp() {
     pose.current.reset();
     void camera.current.start('').then(refreshDevices);
   }, [autoStartCamera, viewState]);
+  useEffect(() => {
+    if (!autoStartMicrophone || autoStartMicAttempted.current || viewState !== 'ready' || !microphone.current) return;
+    autoStartMicAttempted.current = true;
+    void microphone.current.start('').then(refreshDevices);
+  }, [autoStartMicrophone, viewState]);
   useEffect(() => {
     saveLighting(settings.project, settings.lighting);
     avatarRef.current?.setLighting(settings.lighting);

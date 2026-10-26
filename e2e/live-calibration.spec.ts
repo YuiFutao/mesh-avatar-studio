@@ -108,3 +108,31 @@ test('automatic camera permission failure leaves a manual retry available', asyn
   await expect(page.getByTestId('tracking-status')).toHaveAttribute('data-state', 'cameraBlocked');
   await expect(page.getByRole('button', { name: 'Start camera', exact: true })).toBeEnabled();
 });
+
+test('launcher starts microphone once at default gain and allows manual stop', async ({ page }) => {
+  await prepare(page);
+  await page.addInitScript(() => {
+    const cameraMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    const globals = window as Window & { micCalls?: number };
+    globals.micCalls = 0;
+    navigator.mediaDevices.getUserMedia = async constraints => {
+      if (!constraints?.audio) return cameraMedia(constraints);
+      globals.micCalls!++;
+      const audio = new AudioContext(), oscillator = audio.createOscillator(), target = audio.createMediaStreamDestination();
+      oscillator.connect(target); oscillator.start(); await audio.resume();
+      const track = target.stream.getAudioTracks()[0], stop = track.stop.bind(track);
+      track.stop = () => { oscillator.stop(); void audio.close(); stop(); };
+      return target.stream;
+    };
+  });
+  await ready(page, '/live.html?cameraPreview=0&autoStartCamera=1&autoStartMicrophone=1');
+  const mic = page.getByRole('checkbox', { name: 'Microphone lip sync' });
+  await expect(mic).toBeChecked();
+  await expect(mic.locator('..').locator('..').getByRole('status')).toHaveText('Microphone on');
+  await expect(page.getByRole('slider', { name: 'Microphone gain' })).toHaveValue('1');
+  await expect(page.getByTestId('tracking-status')).toHaveAttribute('data-state', 'tracking');
+  await mic.uncheck();
+  await page.getByRole('checkbox', { name: 'Show camera preview', exact: true }).check();
+  await expect(mic).not.toBeChecked();
+  expect(await page.evaluate(() => (window as Window & { micCalls?: number }).micCalls)).toBe(1);
+});
