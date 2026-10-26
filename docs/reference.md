@@ -169,6 +169,11 @@ Two pages served by the development server (`npm run dev`):
   microphone controls, face tracking, calibration and the stream URL.
 - **Stream view** (`/stream.html`): only the avatar, for OBS or other capture software.
 
+The Live page also accepts `cameraPreview=0` to start with the camera preview hidden,
+and `autoStartCamera=1` to request camera access once the avatar is ready. Browser
+permission is still required. Without these options, the preview is visible and
+the camera starts manually. The microphone always starts manually.
+
 ### Stream view URL
 
 | Parameter | Values | Default |

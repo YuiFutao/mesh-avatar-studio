@@ -31,7 +31,9 @@ export function LiveApp() {
   const profileInput = useRef<HTMLInputElement>(null), signalTime = useRef(-Infinity);
   const [cameraState, setCameraState] = useState<CameraState>('stopped');
   const [micState, setMicState] = useState<MicState>('micOff');
-  const [tracking, setTracking] = useState(false), [showCamera, setShowCamera] = useState(true);
+  const [tracking, setTracking] = useState(false), [showCamera, setShowCamera] = useState(() => new URLSearchParams(location.search).get('cameraPreview') !== '0');
+  const [autoStartCamera] = useState(() => new URLSearchParams(location.search).get('autoStartCamera') === '1');
+  const autoStartAttempted = useRef(false);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]), [cameraId, setCameraId] = useState(''), [micId, setMicId] = useState('');
   const [gain, setGain] = useState(1), [calibrated, setCalibrated] = useState(false);
   const [copyState, setCopyState] = useState<'copied' | 'copyError' | null>(null);
@@ -102,6 +104,12 @@ export function LiveApp() {
     }).then(value => { if (cancelled) value.destroy(); else { view = value; avatarRef.current = value.avatar; value.avatar.setLighting(lightRef.current); value.avatar.setExpression(expressionRef.current); setViewState('ready'); } }).catch(() => { if (!cancelled) setViewState('projectError'); });
     return () => { cancelled = true; clock.terminate(); view?.destroy(); avatarRef.current = null; };
   }, [settings.project, settings.fit]);
+  useEffect(() => {
+    if (!autoStartCamera || autoStartAttempted.current || viewState !== 'ready' || !camera.current) return;
+    autoStartAttempted.current = true;
+    pose.current.reset();
+    void camera.current.start('').then(refreshDevices);
+  }, [autoStartCamera, viewState]);
   useEffect(() => {
     saveLighting(settings.project, settings.lighting);
     avatarRef.current?.setLighting(settings.lighting);

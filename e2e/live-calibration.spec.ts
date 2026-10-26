@@ -80,3 +80,31 @@ test('explicit local profile installs once and external or malformed profiles ca
   expect(await page.evaluate(() => (window as Window & { cameraCalls?: number }).cameraCalls)).toBe(0);
   expect(outside).toEqual([]);
 });
+
+test('launcher options hide preview and start camera once, with manual stop and retry', async ({ page }) => {
+  const outside = await prepare(page);
+  await ready(page, '/live.html?cameraPreview=0&autoStartCamera=1');
+  const preview = page.getByRole('checkbox', { name: 'Show camera preview', exact: true });
+  await expect(preview).not.toBeChecked();
+  await expect(page.locator('video')).toHaveClass(/camera-hidden/);
+  await expect(page.getByTestId('tracking-status')).toHaveAttribute('data-state', 'tracking');
+  expect(await page.evaluate(() => (window as Window & { cameraCalls?: number }).cameraCalls)).toBe(1);
+  await expect(page.getByRole('checkbox', { name: 'Microphone lip sync' })).not.toBeChecked();
+  await page.getByRole('button', { name: 'Stop camera', exact: true }).click();
+  await preview.check();
+  await expect(page.getByTestId('tracking-status')).toHaveAttribute('data-state', 'stopped');
+  expect(await page.evaluate(() => (window as Window & { cameraCalls?: number }).cameraCalls)).toBe(1);
+  await page.getByRole('button', { name: 'Start camera', exact: true }).click();
+  await expect(page.getByTestId('tracking-status')).toHaveAttribute('data-state', 'tracking');
+  expect(outside).toEqual([]);
+});
+
+test('automatic camera permission failure leaves a manual retry available', async ({ page }) => {
+  await prepare(page);
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = async () => { throw new DOMException('Denied', 'NotAllowedError'); };
+  });
+  await ready(page, '/live.html?cameraPreview=0&autoStartCamera=1');
+  await expect(page.getByTestId('tracking-status')).toHaveAttribute('data-state', 'cameraBlocked');
+  await expect(page.getByRole('button', { name: 'Start camera', exact: true })).toBeEnabled();
+});
