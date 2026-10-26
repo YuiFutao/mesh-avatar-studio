@@ -186,11 +186,18 @@ Update an existing OBS Browser Source URL to include `fps=30`; changing the Live
 URL does not change an already configured OBS source.
 
 For the local Yui v03 project, `Start-Yui-v03.bat` uses these streaming settings.
-`Start-Yui-v03-Preview.bat` (or `tools/start-yui-v03.ps1 -Preview`) enables the
-avatar preview with the original rendering rate and up to 30 tracking updates per
-second. Both launchers start camera and microphone with the default microphone
-gain. Close the previous Live tab before switching launchers to avoid duplicate
-tracking sessions. Without these URL options, normal Live operation is unchanged.
+It starts the server in the background and opens only the browser. A batch file
+may briefly flash a command window at launch; no PowerShell window remains open.
+Use **Show avatar preview** in the Live page when adjusting the avatar.
+Camera and microphone start with the default microphone gain. Close an old Live
+tab before launching again to avoid duplicate tracking sessions.
+
+Closing the browser does not stop the background server. Run `Stop-Yui-v03.bat`
+to stop the server started by this launcher. It checks the saved process ID,
+creation time and command before stopping it, and does not stop manually started
+servers. Logs are in `work/yui-v03-server.log` and `work/yui-v03-server-error.log`.
+Startup errors appear in a dialog when launched from the batch file.
+Without these URL options, normal Live operation is unchanged.
 
 ### Stream view URL
 
