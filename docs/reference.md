@@ -192,8 +192,17 @@ Use **Show avatar preview** in the Live page when adjusting the avatar.
 Camera and microphone start with the default microphone gain. Close an old Live
 tab before launching again to avoid duplicate tracking sessions.
 
-Closing the browser does not stop the background server. Run `Stop-Yui-v03.bat`
-to stop the server started by this launcher. It checks the saved process ID,
+The background server automatically exits after **five continuous minutes with
+no connected browser or OBS pages**. An open page counts as use even if hidden
+or no controls are being touched. Closing Live alone does not start the countdown
+while an OBS Browser Source is still connected. Reconnecting cancels the countdown;
+after the last page disconnects, a new full five-minute countdown starts. A server
+launched without opening a browser also exits after five unused minutes.
+This applies only to the batch launcher; normal `npm run dev` does not auto-exit.
+Launch the batch again to restart after automatic shutdown. If an older server is
+still running, stop it once before using the updated launcher.
+
+Run `Stop-Yui-v03.bat` to stop the server immediately. It checks the saved process ID,
 creation time and command before stopping it, and does not stop manually started
 servers. Logs are in `work/yui-v03-server.log` and `work/yui-v03-server-error.log`.
 Startup errors appear in a dialog when launched from the batch file.

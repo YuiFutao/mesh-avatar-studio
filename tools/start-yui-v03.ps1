@@ -47,6 +47,13 @@ function Test-StudioServer {
     } catch { return $false }
 }
 
+function Test-AutoShutdown {
+    try {
+        $response = Invoke-WebRequest -UseBasicParsing -Uri "$studioOrigin/__studio/idle-shutdown" -TimeoutSec 1
+        return ($response.Content | ConvertFrom-Json).timeoutMs -eq 300000
+    } catch { return $false }
+}
+
 try {
     $hash = [System.Security.Cryptography.SHA256]::Create()
     try { $rootKey = [BitConverter]::ToString($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes($studioRoot.ToLowerInvariant()))).Replace('-', '') } finally { $hash.Dispose() }
@@ -93,22 +100,30 @@ try {
         if (-not (Test-StudioServer)) {
             throw "Port $studioPort is used by another service. Stop that service and retry. The OBS URL will not be changed."
         }
+        if (-not (Test-AutoShutdown)) {
+            throw 'The existing server does not have five-minute automatic shutdown enabled. Stop it first, then launch again.'
+        }
         Write-Host 'The v03 server is already running. Reusing the same address.'
         if (-not $NoBrowser) { Start-Process -FilePath $liveUrl }
         exit 0
     }
 
     Write-Host 'The server runs without a console window. Use Stop-Yui-v03.bat to stop it.'
+    Write-Host 'It also stops automatically after five minutes without browser or OBS connections.'
     Write-Host 'Camera starts automatically with its preview hidden. Allow camera access if your browser asks.'
     Write-Host 'Microphone lip sync starts automatically with the default gain. Allow microphone access if asked.'
     New-Item -ItemType Directory -Path $serverWork -Force | Out-Null
     $viteArgs = @(('"' + $vitePath + '"'), '--host', '127.0.0.1', '--port', "$studioPort", '--strictPort')
-    $launchedServer = Start-Process -FilePath $node -ArgumentList $viteArgs -WorkingDirectory $studioRoot -WindowStyle Hidden -RedirectStandardOutput $outputLog -RedirectStandardError $errorLog -PassThru
+    $previousIdleShutdown = $env:MESH_AVATAR_IDLE_SHUTDOWN
+    try {
+        $env:MESH_AVATAR_IDLE_SHUTDOWN = '1'
+        $launchedServer = Start-Process -FilePath $node -ArgumentList $viteArgs -WorkingDirectory $studioRoot -WindowStyle Hidden -RedirectStandardOutput $outputLog -RedirectStandardError $errorLog -PassThru
+    } finally { $env:MESH_AVATAR_IDLE_SHUTDOWN = $previousIdleShutdown }
     @{ processId = $launchedServer.Id; startedTicks = $launchedServer.StartTime.ToUniversalTime().Ticks.ToString() } | ConvertTo-Json | Set-Content -LiteralPath $statePath -Encoding UTF8
     $ready = $false
     for ($attempt = 0; $attempt -lt 40; $attempt++) {
         if ($launchedServer.HasExited) { throw "The server exited. See $errorLog" }
-        if (Test-StudioServer) { $ready = $true; break }
+        if ((Test-StudioServer) -and (Test-AutoShutdown)) { $ready = $true; break }
         Start-Sleep -Milliseconds 150
     }
     if (-not $ready) { throw "The server did not become ready. See $errorLog" }
