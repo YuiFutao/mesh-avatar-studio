@@ -25,6 +25,26 @@ $launchedServer = $null
 $launcherMutex = $null
 $mutexHeld = $false
 
+function Start-LiveBrowser {
+    $chromeCandidates = @(
+        (Join-Path $env:ProgramFiles 'Google\Chrome\Application\chrome.exe'),
+        (Join-Path ${env:ProgramFiles(x86)} 'Google\Chrome\Application\chrome.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Google\Chrome\Application\chrome.exe')
+    )
+    $chromePath = $chromeCandidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+    if (-not $chromePath) {
+        throw 'Google Chrome executable was not found in the standard installation locations.'
+    }
+    $chromeUserData = Join-Path $env:LOCALAPPDATA 'Google\Chrome\User Data\user_live2d_001'
+    New-Item -ItemType Directory -Path $chromeUserData -Force | Out-Null
+    $chromeArgs = @(
+        ('--user-data-dir="' + $chromeUserData + '"'),
+        '--new-window',
+        ('"' + $liveUrl + '"')
+    )
+    Start-Process -FilePath $chromePath -ArgumentList $chromeArgs -WindowStyle Minimized
+}
+
 function Get-OwnedServer {
     if (-not (Test-Path -LiteralPath $statePath -PathType Leaf)) { return $null }
     $saved = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
@@ -104,7 +124,7 @@ try {
             throw 'The existing server does not have five-minute automatic shutdown enabled. Stop it first, then launch again.'
         }
         Write-Host 'The v03 server is already running. Reusing the same address.'
-        if (-not $NoBrowser) { Start-Process -FilePath $liveUrl }
+        if (-not $NoBrowser) { Start-LiveBrowser }
         exit 0
     }
 
@@ -127,7 +147,7 @@ try {
         Start-Sleep -Milliseconds 150
     }
     if (-not $ready) { throw "The server did not become ready. See $errorLog" }
-    if (-not $NoBrowser) { Start-Process -FilePath $liveUrl }
+    if (-not $NoBrowser) { Start-LiveBrowser }
     exit 0
 } catch {
     $launchError = $_.Exception.Message

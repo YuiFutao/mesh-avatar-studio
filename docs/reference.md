@@ -188,6 +188,12 @@ URL does not change an already configured OBS source.
 For the local Yui v03 project, `Start-Yui-v03.bat` uses these streaming settings.
 It starts the server in the background and opens only the browser. A batch file
 may briefly flash a command window at launch; no PowerShell window remains open.
+The launcher opens Google Chrome in a minimized new window with the dedicated
+user data directory `%LOCALAPPDATA%\Google\Chrome\User Data\user_live2d_001`.
+This directory is reused across launches and keeps the avatar browser's cookies,
+settings and permissions separate from the usual Chrome profile. Chrome must be
+installed in a standard location. Allow camera and microphone access once in
+this dedicated profile if prompted.
 Use **Show avatar preview** in the Live page when adjusting the avatar.
 Camera and microphone start with the default microphone gain. Close an old Live
 tab before launching again to avoid duplicate tracking sessions.
