@@ -11,6 +11,22 @@ Field meanings are in [docs/rig-fields.md](docs/rig-fields.md).
 - Keep `samples/` and `reference/` unchanged when preparing another illustration.
 - Visually inspect generated images before reporting success; report remaining defects.
 
+## Worktree handoff
+
+- When moving finished work to `main` for continued local use, complete both the
+  code merge and the runnable handoff. Git does not transfer ignored `projects/`
+  assets or install `node_modules/` in another worktree.
+- Inventory the launcher's required local project files. Copy authorized assets
+  into the destination checkout's `projects/` within the same repository, preserve
+  the source, and verify file hashes. Do not silently overwrite differing models.
+- Install the locked dependencies in the destination with `npm ci` when missing
+  or out of date. Validate the rig and avatar files, run the destination launcher's
+  `-Check`, and verify that Live and stream pages load from that destination.
+  A source-worktree test alone does not verify the destination is ready.
+- Keep source worktrees until required local assets have been preserved. Do not
+  stop an in-use OBS server for verification; use a separate test port if needed.
+  See [the runnable handoff checklist](docs/reference.md#moving-a-project-to-main).
+
 Use Node.js 22.17+ and Python 3.10+ with `uv`. Run:
 
 ```sh

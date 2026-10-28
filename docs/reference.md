@@ -214,6 +214,30 @@ servers. Logs are in `work/yui-v03-server.log` and `work/yui-v03-server-error.lo
 Startup errors appear in a dialog when launched from the batch file.
 Without these URL options, normal Live operation is unchanged.
 
+### Moving a project to main
+
+A successful Git merge transfers code, while each checkout has its own ignored
+`projects/` and `node_modules/`. For a handoff that must run from `main`, use the
+main checkout as the destination and complete all of these steps:
+
+1. Copy the entire chosen project folder into the destination's `projects/`,
+   including `rig.json`, source and built images, sprites and tracking calibration.
+   Preserve the source and compare file hashes. If the destination already has a
+   different model, compare or version it before overwriting anything.
+2. Run `npm ci` in the destination to install the dependencies from its lockfile.
+3. Run `npm run validate-rig -- projects/<name>/rig.json` and
+   `npm run validate-avatar -- projects/<name>` there. For the Yui launcher, also
+   run `powershell.exe -NoProfile -File tools/start-yui-v03.ps1 -Check`.
+4. Start the destination server and verify that both its Live and stream views
+   load the chosen avatar and the tracking calibration. If the production port
+   is in use, verify on a separate port rather than stopping an OBS session.
+5. Only report the operational handoff as complete after these checks. Keep local
+   images and dependencies ignored; they are not files to add to the Git merge.
+
+Keep the main checkout as the stable operating location for the streaming batch.
+Do not delete a development worktree until all local project data that must be
+kept has been preserved in the same repository.
+
 ### Stream view URL
 
 | Parameter | Values | Default |
