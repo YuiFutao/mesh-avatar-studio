@@ -27,7 +27,8 @@ export function LiveApp() {
   const [expression, setExpression] = useState<LiveExpression>('neutral');
   const expressionRef = useRef(expression); expressionRef.current = expression;
   const [remote, setRemote] = useState<{ url: string; token: string } | null>(null), [remoteCopied, setRemoteCopied] = useState<'url' | 'token' | null>(null);
-  const [options, setOptions] = useState<TrackingOptions>({ mirror: true, sensitivity: 1, smoothing: 0.35 });
+  const [options, setOptions] = useState<TrackingOptions>(() => ({ mirror: true, sensitivity: 1, smoothing: 0.35,
+    narrowHalfEyes: new URLSearchParams(location.search).get('eyeResponse') === 'narrow' }));
   const [correction, setCorrection] = useState(() => loadCalibration(settings.project, settings.avatar));
   const [correctionError, setCorrectionError] = useState(false);
   const [faceSignals, setFaceSignals] = useState<{ smile: number; left: number; right: number } | null>(null);

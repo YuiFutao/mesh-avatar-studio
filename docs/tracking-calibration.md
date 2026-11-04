@@ -2,7 +2,16 @@
 
 The Studio Live page can use a per-avatar calibration profile for eye openness and
 smile strength. It does not change the tracking model, runtime API, avatar rig or
-sprite files. Without an enabled profile, face tracking follows the existing path.
+sprite files. Without an enabled profile, face tracking uses the standard mapping.
+
+The optional `eyeResponse=narrow` Live query parameter applies an eye response curve
+after smoothing, with or without a calibration profile. The V04 launcher includes
+this parameter; the V03 launcher and URLs without it keep the original response.
+For the standard rig thresholds, the half-eye interval is narrowed from
+30–75% to 30–55% of tracked openness: 55% maps to the runtime's 75% open-eye boundary.
+The closed-eye boundary, fully open eyes and widening are unchanged. Corrected
+parameters are also sent to the stream view. Custom rig thresholds still apply to
+these corrected values; runtime defaults and explicit expression poses are unchanged.
 
 Open **Face and smile calibration** under the camera preview, choose **Load
 calibration JSON**, and select a profile. Loading a valid profile enables it and

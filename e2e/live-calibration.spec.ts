@@ -3,7 +3,7 @@ import { samplePresent, sampleSkipReason } from './sample';
 test.beforeEach(() => test.skip(!samplePresent, sampleSkipReason));
 const profile = { version: 1, config: { neutralMouth: 1e-6, floor: 2e-5, exit: 3e-5, enter: 6e-5, gentle: 3e-4, big: .9,
   open: [.1, .2], closed: [.65, .75], enterSeconds: .1, exitSeconds: .16, riseSeconds: .08, fallSeconds: .12 } };
-async function prepare(page: Page) {
+async function prepare(page: Page, blinkLeft = .65) {
   const outside: string[] = [];
   await page.context().route('**/*', route => {
     if (new URL(route.request().url()).hostname !== '127.0.0.1') { outside.push(route.request().url()); return route.abort(); }
@@ -24,7 +24,7 @@ async function prepare(page: Page) {
     self.onmessage = ({data}) => {
       if(data.type === 'init') self.postMessage({type:'ready',delegate:'GPU'});
       if(data.type === 'frame') {
-        const scores={mouthSmileLeft:.000301,mouthSmileRight:.000301,eyeBlinkLeft:.65,eyeBlinkRight:.2,jawOpen:.4};
+        const scores={mouthSmileLeft:.000301,mouthSmileRight:.000301,eyeBlinkLeft:${blinkLeft},eyeBlinkRight:.2,jawOpen:.4};
         self.postMessage({type:'result',elapsed:1,result:{faceLandmarks:[[]],facialTransformationMatrixes:[{data:[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]}],faceBlendshapes:[{categories:Object.entries(scores).map(([categoryName,score])=>({categoryName,score}))}]}});
         data.frame.close(); self.postMessage({type:'consumed'});
       }
@@ -41,6 +41,18 @@ async function nextParams(page: Page) {
     });
   });
 }
+test('V04 narrow eye response is opt-in and reaches the relay while legacy URLs retain V03 behavior', async ({ page }) => {
+  await prepare(page, .4);
+  await ready(page, '/live.html?eyeResponse=narrow');
+  await page.getByRole('button', { name: 'Start camera', exact: true }).click();
+  await expect(page.getByTestId('tracking-status')).toHaveAttribute('data-state', 'tracking');
+  await expect.poll(async () => (await nextParams(page)).eyeROpen).toBeGreaterThan(.75);
+  await ready(page);
+  await page.getByRole('button', { name: 'Start camera', exact: true }).click();
+  await expect(page.getByTestId('tracking-status')).toHaveAttribute('data-state', 'tracking');
+  await expect.poll(async () => (await nextParams(page)).eyeROpen).toBeLessThan(.65);
+});
+
 test('optional calibration imports, relays, switches off and persists without starting devices', async ({ context, page }) => {
   const outside = await prepare(page), errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
   await ready(page);

@@ -1,6 +1,38 @@
 import { expect, test } from 'vitest';
-import { FacePose, mapFace, readFace, smoothParameters, rmsLevel, faceNeutral, type FaceResult } from '../src/live/tracking';
+import { FacePose, mapFace, readFace, smoothParameters, rmsLevel, faceNeutral, liveEyeOpenness, type FaceResult } from '../src/live/tracking';
 const options = { mirror: false, sensitivity: 1, smoothing: 0 };
+test('Live narrows half eyes while preserving closed eyes and full openness', () => {
+  for (const value of [0, .15, .3, 1, 1.25]) expect(liveEyeOpenness(value)).toBe(value);
+  expect(liveEyeOpenness(.54)).toBeLessThan(.75);
+  expect(liveEyeOpenness(.55)).toBeCloseTo(.75);
+  expect(liveEyeOpenness(.65)).toBeGreaterThan(.75);
+  let previous = 0;
+  for (let i = 0; i <= 125; i++) {
+    const value = liveEyeOpenness(i / 100);
+    expect(value).toBeGreaterThanOrEqual(previous); previous = value;
+  }
+});
+
+test('sustained partial squints stay open and a blink reopens promptly with smoothing', () => {
+  const pose = new FacePose(), opts = { ...options, smoothing: .35, narrowHalfEyes: true };
+  for (let i = 0; i < 120; i++) {
+    pose.update(result(0, { eyeBlinkLeft: .4, eyeBlinkRight: .4 }), i * 16);
+    const sample = pose.sample(i * 16, .016, opts);
+    expect(sample.params.eyeLOpen).toBeGreaterThanOrEqual(.75);
+    expect(sample.params.eyeROpen).toBeGreaterThanOrEqual(.75);
+  }
+  pose.update(result(0, { eyeBlinkLeft: .95 }), 1920);
+  expect(pose.sample(1920, .016, opts).params.eyeLOpen).toBe(0);
+  pose.update(result(), 1936);
+  expect(pose.sample(2036, .1, opts).params.eyeLOpen).toBeGreaterThan(.75);
+});
+test('legacy tracking retains its original half-eye response unless explicitly enabled', () => {
+  const pose = new FacePose(); pose.update(result(0, { eyeBlinkLeft: .4 }), 0);
+  expect(pose.sample(0, .016, options).params.eyeLOpen).toBeCloseTo(.6);
+  expect(pose.sample(0, .016, { ...options, narrowHalfEyes: true }).params.eyeLOpen).toBeCloseTo(.7777777778);
+  expect(pose.sample(0, .016, options).params.eyeLOpen).toBeCloseTo(.6);
+});
+
 function result(yaw = 0, shapes: Record<string, number> = {}): FaceResult {
   const a = yaw * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
   return { faceLandmarks: [[]], facialTransformationMatrixes: [{ data: [c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1] }], faceBlendshapes: [{ categories: Object.entries(shapes).map(([categoryName, score]) => ({ categoryName, score })) }] };

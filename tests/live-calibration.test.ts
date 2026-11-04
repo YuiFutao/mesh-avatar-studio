@@ -7,6 +7,20 @@ const shapes = (mouth = 0, left = .1, right = .2) => ({ mouthSmileLeft: mouth, m
 const result = (s = shapes()): FaceResult => ({ faceLandmarks: [[]], facialTransformationMatrixes: [{ data: [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1] }], faceBlendshapes: [{ categories: Object.entries(s).map(([categoryName, score]) => ({ categoryName, score })) }] });
 const options = { mirror: false, sensitivity: 1, smoothing: .35 };
 afterEach(() => vi.unstubAllGlobals());
+test('calibrated partial squints use the narrower Live half-eye range on both mirrored sides', () => {
+  for (const mirror of [false, true]) {
+    const pose = new FacePose(); pose.setCalibration(profile.config);
+    let params;
+    for (let i = 0; i < 90; i++) {
+      // Calibrated left openness is 0.6; right is fully closed.
+      pose.update(result(shapes(0, .32, .75)), i * 33);
+      params = pose.sample(i * 33, .033, { ...options, mirror, narrowHalfEyes: true }).params;
+    }
+    expect(params![mirror ? 'eyeROpen' : 'eyeLOpen']).toBeGreaterThan(.75);
+    expect(params![mirror ? 'eyeLOpen' : 'eyeROpen']).toBeLessThan(.001);
+  }
+});
+
 test('profiles reject unusable ranges and copy only validated configuration', () => {
   const source = { ...structuredClone(profile), ignored: 'metadata' };
   const parsed = parseCalibrationProfile(source)!; expect(parsed).toEqual(profile);

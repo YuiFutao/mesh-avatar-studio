@@ -8,7 +8,7 @@ export interface FaceResult {
   facialTransformationMatrixes: { data: number[] }[];
 }
 export interface RawFace { yaw: number; pitch: number; roll: number; shapes: Record<string, number> }
-export interface TrackingOptions { mirror: boolean; sensitivity: number; smoothing: number }
+export interface TrackingOptions { mirror: boolean; sensitivity: number; smoothing: number; narrowHalfEyes?: boolean }
 export const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, Number.isFinite(value) ? value : min));
 export const faceNeutral: Record<string, number> = {
   angleX: 0, angleY: 0, angleZ: 0, bodyAngleX: 0, bodyAngleZ: 0,
@@ -59,6 +59,14 @@ export function smoothParameters(current: Record<string, number>, target: Record
   const tau = clamp(smoothing) * 0.25;
   const alpha = tau === 0 ? 1 : 1 - Math.exp(-Math.max(0, dt) / tau);
   return Object.fromEntries(Object.entries(target).map(([key, value]) => [key, (current[key] ?? value) + (value - (current[key] ?? value)) * alpha]));
+}
+/** Narrow the standard drawn half-eye range in Live without changing runtime rigs.
+ * Keep the closed boundary (0.3), full openness and widening values unchanged.
+ * Apply after smoothing so reopening does not linger in the old half-eye band.
+ */
+export function liveEyeOpenness(open: number): number {
+  if (open <= .3 || open >= 1) return open;
+  return open < .55 ? .3 + (open - .3) * .45 / .25 : .75 + (open - .55) * .25 / .45;
 }
 export class FacePose {
   private face: RawFace | null = null;
@@ -119,6 +127,10 @@ export class FacePose {
       if (!corrected.valid) params.eyeLWide = params.eyeRWide = 0;
     }
     if (!tracking) params.eyeLWide = params.eyeRWide = 0;
+    if (options.narrowHalfEyes) {
+      params.eyeLOpen = liveEyeOpenness(params.eyeLOpen);
+      params.eyeROpen = liveEyeOpenness(params.eyeROpen);
+    }
     return { tracking, params, weight: this.weight };
   }
 }

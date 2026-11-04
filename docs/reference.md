@@ -238,6 +238,25 @@ Keep the main checkout as the stable operating location for the streaming batch.
 Do not delete a development worktree until all local project data that must be
 kept has been preserved in the same repository.
 
+### Yui V04 launcher
+
+`Start-Yui-v04.bat` starts `tools/start-yui-v04.ps1` from its own checkout;
+`Stop-Yui-v04.bat` stops only that launcher's owned server. V04 uses port 5189
+and the local project `yui-chibi03-v04-half-eye`. V03 keeps port 5188 and its
+existing project, launchers and tracking response.
+
+The V04 Live URL includes `eyeResponse=narrow`, which enables the opt-in half-eye
+response documented in [tracking calibration](tracking-calibration.md). Its OBS
+stream URL must name the V04 project and port 5189. The stream receives corrected
+parameters and does not need the eye response query itself.
+
+V04's local `README.md`, `START_HERE.md`, `OBS_URL.txt` and `version.json` describe
+the saved edition, its URLs and the code commit it requires. These files and all
+model images remain ignored under `projects/`; preserve and hash-check the full
+folder during a runnable handoff. Run the V04 launcher with `-Check` at the
+destination before opening it. The launcher retains automatic camera/microphone
+start, preview-off mode and the five-minute idle shutdown from V03.
+
 ### Stream view URL
 
 | Parameter | Values | Default |
